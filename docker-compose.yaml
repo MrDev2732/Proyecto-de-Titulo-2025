@@ -1,0 +1,31 @@
+services:
+  redis:
+    image: redis:alpine
+    container_name: redis_network
+    restart: always
+    ports:
+      - "6380:6380"
+    command: --port 6380
+    networks:
+      - redis_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secreta123
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - redis_network
+
+# Agregar esta sección para definir la red
+networks:
+  redis_network:
+    driver: bridge
