@@ -1,8 +1,8 @@
 """First Revision
 
-Revision ID: 74e9d0d9f381
+Revision ID: ae803eefd5c6
 Revises: 
-Create Date: 2025-08-15 02:47:30.549922
+Create Date: 2025-08-17 23:44:53.194852
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '74e9d0d9f381'
+revision: str = 'ae803eefd5c6'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -90,11 +90,10 @@ def upgrade() -> None:
     sa.Column('email', postgresql.CITEXT(), nullable=True, comment='User email (can be NULL for OAuth-only users)'),
     sa.Column('email_verified_at', sa.DateTime(timezone=True), nullable=True, comment='Email verification timestamp'),
     sa.Column('password_hash', sa.Text(), nullable=True, comment='Password hash (NULL for OAuth-only users)'),
-    sa.Column('status', sa.String(length=20), server_default='UserStatus.ACTIVE', nullable=False, comment='User account status'),
+    sa.Column('status', sa.Enum('ACTIVE', 'INACTIVE', 'BLOCKED', name='user_status_enum'), server_default='ACTIVE', nullable=False, comment='User account status'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.CheckConstraint("status IN ('UserStatus.ACTIVE', 'UserStatus.INACTIVE', 'UserStatus.BLOCKED')", name='ck_user_status'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('email'),
     sa.UniqueConstraint('email', name='uq_user_email'),
@@ -169,6 +168,22 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['role_id'], ['sistema_unidad_territorial.roles.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('user_id', 'role_id'),
+    schema='sistema_unidad_territorial'
+    )
+    op.create_table('user_sessions',
+    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID for the session'),
+    sa.Column('access_token_hash', sa.Text(), nullable=False, comment='SHA256 hash of the access token'),
+    sa.Column('refresh_token_hash', sa.Text(), nullable=True, comment='SHA256 hash of the refresh token'),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False, comment='Session expiration timestamp'),
+    sa.Column('ip_address', sa.String(length=45), nullable=True, comment='Client IP address (IPv4 or IPv6)'),
+    sa.Column('user_agent', sa.Text(), nullable=True, comment='Client user agent string'),
+    sa.Column('is_active', sa.Boolean(), server_default='true', nullable=False, comment='Whether the session is active'),
+    sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True, comment='Timestamp when session was revoked'),
+    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
     op.create_table('address_evidences',
@@ -259,6 +274,7 @@ def downgrade() -> None:
     op.drop_table('projects', schema='sistema_unidad_territorial')
     op.drop_table('certificates', schema='sistema_unidad_territorial')
     op.drop_table('address_evidences', schema='sistema_unidad_territorial')
+    op.drop_table('user_sessions', schema='sistema_unidad_territorial')
     op.drop_table('user_roles', schema='sistema_unidad_territorial')
     op.drop_table('user_oauth_identities', schema='sistema_unidad_territorial')
     op.drop_table('residents', schema='sistema_unidad_territorial')
