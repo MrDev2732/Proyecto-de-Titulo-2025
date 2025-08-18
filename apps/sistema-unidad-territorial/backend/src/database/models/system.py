@@ -125,7 +125,7 @@ class AuditLog(BaseModel):
     # Actor who performed the action
     actor_id: Mapped[Optional[UUID]] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('users.id', ondelete='SET NULL'), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='SET NULL'), 
         nullable=True,
         comment="User ID who performed the action"
     )

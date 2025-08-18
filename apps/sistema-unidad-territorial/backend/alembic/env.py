@@ -15,7 +15,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Configurar el schema antes de importar los modelos
-Base.metadata.schema = settings.database.schema
+Base.metadata.schema = settings.database.db_schema
 
 # Importar los modelos después de configurar el schema
 from src.database.models import *
@@ -42,20 +42,20 @@ config.set_main_option("sqlalchemy.url", settings.database.sync_url)
 
 def include_object(object, name, type_, reflected, compare_to):
     """Determina qué objetos incluir en las migraciones."""
-    schema = settings.database.schema.strip()
+    schema = settings.database.db_schema.strip()
 
     if type_ == "table":
-        return object.schema and object.schema.strip() == schema
+        return object.schema and object.schema == schema
     elif type_ == "column":
-        return object.table.schema and object.table.schema.strip() == schema
+        return object.table.schema and object.table.schema == schema
     elif type_ == "sequence":
-        return object.schema and object.schema.strip() == schema
+        return object.schema and object.schema == schema
     return False
 
 
 def create_schemas_and_extensions(connection):
     """Crea el schema y configura las extensiones necesarias."""
-    schema = settings.database.schema.strip()
+    schema = settings.database.db_schema.strip()
 
     # Crear schema si no existe
     connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
@@ -87,7 +87,7 @@ def run_migrations_online():
                 target_metadata=target_metadata,
                 include_schemas=True,
                 include_object=include_object,
-                version_table_schema=settings.database.schema.strip(),
+                version_table_schema=settings.database.db_schema.strip(),
                 compare_type=True
             )
 
@@ -117,7 +117,7 @@ def run_migrations_offline():
         target_metadata=target_metadata,
         include_schemas=True,
         include_object=include_object,
-        version_table_schema=settings.database.schema.strip()
+        version_table_schema=settings.database.db_schema.strip()
     )
 
     with context.begin_transaction():

@@ -1,5 +1,5 @@
 from src.database.models.base import BaseModel, TenantBaseModel, UUIDMixin, TimestampMixin, TenantMixin
-from src.database.models.auth import User, Role, AuthMagicLink, UserOauthIdentity, user_roles_table
+from src.database.models.auth import User, Role, AuthMagicLink, UserOauthIdentity, UserSession, user_roles_table
 from src.database.models.residents import Resident, AddressEvidence
 from src.database.models.certificates import Certificate
 from src.database.models.spaces import Space, Reservation
@@ -21,6 +21,7 @@ __all__ = [
     "Role",
     "AuthMagicLink",
     "UserOauthIdentity",
+    "UserSession",
     "user_roles_table",
 
     # Residents

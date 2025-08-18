@@ -55,13 +55,13 @@ class Reservation(TenantBaseModel):
     # Relationships
     space_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('spaces.id', ondelete='CASCADE'), 
+        ForeignKey(f'{SCHEMA}.spaces.id', ondelete='CASCADE'), 
         nullable=False,
         comment="Space ID for the reservation"
     )
     requesting_resident_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('residents.id', ondelete='RESTRICT'), 
+        ForeignKey(f'{SCHEMA}.residents.id', ondelete='RESTRICT'), 
         nullable=False,
         comment="Resident ID who made the reservation"
     )
