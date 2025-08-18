@@ -26,13 +26,13 @@ class Certificate(TenantBaseModel):
     # Basic relationships
     resident_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('residents.id', ondelete='RESTRICT'), 
+        ForeignKey(f'{SCHEMA}.residents.id', ondelete='RESTRICT'), 
         nullable=False,
         comment="Resident ID for the certificate"
     )
     approver_id: Mapped[Optional[UUID]] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('users.id', ondelete='SET NULL'), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='SET NULL'), 
         nullable=True,
         comment="User ID who approved the certificate"
     )
