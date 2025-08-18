@@ -31,6 +31,7 @@ __all__ = [
     "Role",
     "AuthMagicLink",
     "UserOauthIdentity",
+    "UserSession",
     "user_roles_table",
     "Resident",
     "AddressEvidence",
