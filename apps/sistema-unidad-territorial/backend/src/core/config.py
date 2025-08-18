@@ -26,6 +26,15 @@ class APISettings(BaseModel):
     secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
+    refresh_token_expire_days: int = 30
+
+
+class GoogleOAuthSettings(BaseModel):
+    """Google OAuth settings."""
+    client_id: str
+    client_secret: str
+    redirect_uri: str
+    scope: str = "openid email profile"
 
 
 class DatabaseSettings(BaseModel):
@@ -35,7 +44,7 @@ class DatabaseSettings(BaseModel):
     host: str
     port: str
     name: str
-    schema: str = "sistema_unidad_territorial"
+    db_schema: str = "sistema_unidad_territorial"
     pool_size: int = 20
     max_overflow: int = 10
 
@@ -68,6 +77,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings
     migrations: MigrationSettings = MigrationSettings()
     api: APISettings
+    google_oauth: GoogleOAuthSettings
 
     @classmethod
     def get_database_settings(cls, environment: str) -> dict[str, Any]:
@@ -79,7 +89,7 @@ class Settings(BaseSettings):
                 "host": "localhost",
                 "port": "5432",
                 "name": "postgres",
-                "schema": "sistema_unidad_territorial",
+                "db_schema": "sistema_unidad_territorial",
                 "pool_size": 20,
                 "max_overflow": 10,
             }
@@ -90,7 +100,7 @@ class Settings(BaseSettings):
                 "host": getenv("DB_HOST_QP"),
                 "port": getenv("DB_PORT_QP"),
                 "name": getenv("DB_DATABASE_QP"),
-                "schema": getenv("DB_SCHEMA"),
+                "db_schema": getenv("DB_SCHEMA"),
                 "pool_size": 20,
                 "max_overflow": 10,
             }
@@ -115,6 +125,11 @@ def get_settings(env_loader: EnvironmentLoader = DotEnvLoader()) -> Settings:
         database=DatabaseSettings(**Settings.get_database_settings(environment)),
         api=APISettings(
             secret_key=getenv("SECRET_KEY"),
+        ),
+        google_oauth=GoogleOAuthSettings(
+            client_id=getenv("GOOGLE_OAUTH_CLIENT_ID"),
+            client_secret=getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+            redirect_uri=getenv("GOOGLE_OAUTH_REDIRECT_URI"),
         )
     )
 
