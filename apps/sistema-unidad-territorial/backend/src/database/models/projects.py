@@ -20,7 +20,7 @@ class Project(TenantBaseModel):
     # Relationships
     requesting_resident_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('residents.id', ondelete='RESTRICT'), 
+        ForeignKey(f'{SCHEMA}.residents.id', ondelete='RESTRICT'), 
         nullable=False,
         comment="Resident ID who requested the project"
     )
@@ -82,7 +82,7 @@ class ProjectAttachment(TenantBaseModel):
     # Relationships
     project_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('projects.id', ondelete='CASCADE'), 
+        ForeignKey(f'{SCHEMA}.projects.id', ondelete='CASCADE'), 
         nullable=False,
         comment="Project ID for the attachment"
     )
