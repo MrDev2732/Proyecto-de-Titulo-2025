@@ -2,8 +2,10 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
+    Enum,
     ForeignKey,
     String,
     Table,
@@ -43,20 +45,16 @@ class User(BaseModel):
         nullable=True, 
         comment="Password hash (NULL for OAuth-only users)"
     )
-    status: Mapped[str] = Column(
-        String(20),
+    status: Mapped[UserStatus] = Column(
+        Enum(UserStatus, name='user_status_enum', values_callable=lambda obj: [e.name for e in obj]),
         nullable=False,
         default=UserStatus.ACTIVE,
-        server_default=f"'{UserStatus.ACTIVE}'",
+        server_default='ACTIVE',
         comment="User account status"
     )
 
     # Constraints and schema
     __table_args__ = (
-        CheckConstraint(
-            f"status IN ('{UserStatus.ACTIVE}', '{UserStatus.INACTIVE}', '{UserStatus.BLOCKED}')",
-            name='ck_user_status'
-        ),
         UniqueConstraint('email', name='uq_user_email'),
         {'schema': SCHEMA}
     )
@@ -64,7 +62,7 @@ class User(BaseModel):
     # Relationships
     roles: Mapped[List["Role"]] = relationship(
         "Role", 
-        secondary="user_roles", 
+        secondary=lambda: user_roles_table, 
         back_populates="users",
         lazy="selectin"
     )
@@ -83,6 +81,11 @@ class User(BaseModel):
         "Resident",
         back_populates="user",
         uselist=False
+    )
+    sessions: Mapped[List["UserSession"]] = relationship(
+        "UserSession",
+        back_populates="user",
+        cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
@@ -105,7 +108,7 @@ class Role(BaseModel):
     # Relationships
     users: Mapped[List[User]] = relationship(
         User,
-        secondary="user_roles",
+        secondary=lambda: user_roles_table,
         back_populates="roles",
         lazy="selectin"
     )
@@ -118,8 +121,8 @@ class Role(BaseModel):
 user_roles_table = Table(
     'user_roles',
     BaseModel.metadata,
-    Column('user_id', UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
-    Column('role_id', UUID(as_uuid=True), ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+    Column('user_id', UUID(as_uuid=True), ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), primary_key=True),
+    Column('role_id', UUID(as_uuid=True), ForeignKey(f'{SCHEMA}.roles.id', ondelete='CASCADE'), primary_key=True),
     schema=SCHEMA
 )
 
@@ -132,7 +135,7 @@ class AuthMagicLink(BaseModel):
 
     user_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('users.id', ondelete='CASCADE'), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
         nullable=False,
         comment="User ID for the magic link"
     )
@@ -178,7 +181,7 @@ class UserOauthIdentity(BaseModel):
 
     user_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('users.id', ondelete='CASCADE'), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
         nullable=False,
         comment="User ID for the OAuth identity"
     )
@@ -238,3 +241,73 @@ class UserOauthIdentity(BaseModel):
 
     def __repr__(self) -> str:
         return f"UserOauthIdentity(id={self.id}, provider={self.provider}, provider_user_id={self.provider_user_id})"
+
+
+class UserSession(BaseModel):
+    """User session model for token management and security."""
+
+    __tablename__ = 'user_sessions'
+    __table_args__ = {'schema': SCHEMA}
+
+    user_id: Mapped[UUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="User ID for the session"
+    )
+    access_token_hash: Mapped[str] = Column(
+        Text, 
+        nullable=False, 
+        comment="SHA256 hash of the access token"
+    )
+    refresh_token_hash: Mapped[Optional[str]] = Column(
+        Text, 
+        nullable=True, 
+        comment="SHA256 hash of the refresh token"
+    )
+    expires_at: Mapped[datetime] = Column(
+        DateTime(timezone=True), 
+        nullable=False,
+        comment="Session expiration timestamp"
+    )
+    ip_address: Mapped[Optional[str]] = Column(
+        String(45), 
+        nullable=True,
+        comment="Client IP address (IPv4 or IPv6)"
+    )
+    user_agent: Mapped[Optional[str]] = Column(
+        Text, 
+        nullable=True,
+        comment="Client user agent string"
+    )
+    is_active: Mapped[bool] = Column(
+        Boolean, 
+        nullable=False, 
+        default=True,
+        server_default='true',
+        comment="Whether the session is active"
+    )
+    revoked_at: Mapped[Optional[datetime]] = Column(
+        DateTime(timezone=True), 
+        nullable=True,
+        comment="Timestamp when session was revoked"
+    )
+
+    # Relationships
+    user: Mapped[User] = relationship("User", back_populates="sessions")
+
+    def is_expired(self) -> bool:
+        """Check if the session has expired."""
+        return now_chile() > self.expires_at
+
+    def is_valid(self) -> bool:
+        """Check if the session is valid (active and not expired)."""
+        return self.is_active and not self.is_expired()
+
+    def revoke(self) -> None:
+        """Revoke the session."""
+        self.is_active = False
+        self.revoked_at = now_chile()
+
+    def __repr__(self) -> str:
+        return f"UserSession(id={self.id}, user_id={self.user_id}, is_active={self.is_active})"
