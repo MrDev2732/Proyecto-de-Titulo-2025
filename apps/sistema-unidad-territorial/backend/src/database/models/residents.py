@@ -29,7 +29,7 @@ class Resident(TenantBaseModel):
     # User reference (optional)
     user_id: Mapped[Optional[UUID]] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('users.id', ondelete='SET NULL'), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='SET NULL'), 
         nullable=True,
         comment="Associated user ID (optional)"
     )
@@ -122,7 +122,7 @@ class AddressEvidence(TenantBaseModel):
 
     resident_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey('residents.id', ondelete='CASCADE'), 
+        ForeignKey(f'{SCHEMA}.residents.id', ondelete='CASCADE'), 
         nullable=False,
         comment="Resident ID for the evidence"
     )
