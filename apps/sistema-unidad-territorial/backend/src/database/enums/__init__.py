@@ -3,12 +3,19 @@ from src.database.enums.notification_status import NotificationStatus, Notificat
 from src.database.enums.project_status import ProjectStatus
 from src.database.enums.reservation_status import ReservationStatus
 from src.database.enums.user_status import UserStatus, OAuthProvider
+from src.database.enums.auth_log_status import AuthProvider, AuthMethod, AuthResult, AuthFailureReason
 
 
 __all__ = [
     # User enums
     "UserStatus",
     "OAuthProvider",
+
+    # Auth log enums
+    "AuthProvider",
+    "AuthMethod", 
+    "AuthResult",
+    "AuthFailureReason",
 
     # Certificate enums
     "CertificateStatus",
