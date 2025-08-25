@@ -1,8 +1,8 @@
 """First Revision
 
-Revision ID: ae803eefd5c6
+Revision ID: ce006e6f008f
 Revises: 
-Create Date: 2025-08-17 23:44:53.194852
+Create Date: 2025-08-24 23:57:25.368639
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'ae803eefd5c6'
+revision: str = 'ce006e6f008f'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -156,7 +156,8 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.CheckConstraint("provider IN ('OAuthProvider.GOOGLE')", name='ck_oauth_provider'),
+    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
+    sa.CheckConstraint("provider IN ('google')", name='ck_oauth_provider'),
     sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('provider', 'provider_user_id', name='uq_provider_identity'),
@@ -182,6 +183,7 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
     sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
@@ -196,6 +198,33 @@ def upgrade() -> None:
     sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
     sa.CheckConstraint("type IN ('EvidenceType.UTILITY_BILL', 'EvidenceType.RENTAL_CONTRACT', 'EvidenceType.OTHER')", name='ck_evidence_type'),
     sa.ForeignKeyConstraint(['resident_id'], ['sistema_unidad_territorial.residents.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    schema='sistema_unidad_territorial'
+    )
+    op.create_table('authentication_log',
+    sa.Column('user_id', sa.UUID(), nullable=True, comment='ID del usuario (NULL si no se pudo identificar)'),
+    sa.Column('user_session_id', sa.UUID(), nullable=True, comment='ID de sesión creada en caso de éxito'),
+    sa.Column('email', postgresql.CITEXT(), nullable=True, comment='Email utilizado en el intento (puede no existir como usuario)'),
+    sa.Column('provider', sa.Enum('local', 'google', 'magic_link', name='auth_provider_enum'), nullable=False, comment='Proveedor de autenticación (local, google, magic_link)'),
+    sa.Column('method', sa.Enum('password', 'oauth', 'magic_link', name='auth_method_enum'), nullable=False, comment='Método de autenticación (password, oauth, magic_link)'),
+    sa.Column('result', sa.Enum('SUCCESS', 'FAIL', name='auth_result_enum'), nullable=False, comment='Resultado del intento (SUCCESS, FAIL)'),
+    sa.Column('failure_reason', sa.Enum('INVALID_PASSWORD', 'INVALID_EMAIL', 'ACCOUNT_SUSPENDED', 'EMAIL_NOT_VERIFIED', 'OAUTH_ERROR', 'OAUTH_EMAIL_MISMATCH', 'TOKEN_EXPIRED', 'TOKEN_INVALID', 'RATE_LIMITED', 'ACCOUNT_LOCKED', 'MFA_REQUIRED', 'MFA_INVALID', 'UNKNOWN_ERROR', name='auth_failure_reason_enum'), nullable=True, comment='Razón específica del fallo'),
+    sa.Column('error_code', sa.Text(), nullable=True, comment='Código de error interno del sistema'),
+    sa.Column('mfa_used', sa.Boolean(), server_default='false', nullable=False, comment='Si se utilizó autenticación multifactor'),
+    sa.Column('risk_score', sa.SmallInteger(), nullable=True, comment='Puntuación de riesgo calculada (0-100)'),
+    sa.Column('ip', postgresql.INET(), nullable=True, comment='Dirección IP del cliente'),
+    sa.Column('user_agent', sa.Text(), nullable=True, comment='User Agent del navegador/cliente'),
+    sa.Column('geo_country', sa.String(length=2), nullable=True, comment='Código de país ISO-3166 alpha-2'),
+    sa.Column('request_id', sa.UUID(), nullable=True, comment='ID de correlación con logs de aplicación'),
+    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
+    sa.CheckConstraint("(result = 'SUCCESS' AND failure_reason IS NULL) OR (result = 'FAIL')", name='ck_auth_log_success_no_failure_reason'),
+    sa.CheckConstraint('geo_country IS NULL OR length(geo_country) = 2', name='ck_auth_log_geo_country_format'),
+    sa.CheckConstraint('risk_score IS NULL OR (risk_score >= 0 AND risk_score <= 100)', name='ck_auth_log_risk_score_range'),
+    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['user_session_id'], ['sistema_unidad_territorial.user_sessions.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
@@ -273,6 +302,7 @@ def downgrade() -> None:
     op.drop_table('reservations', schema='sistema_unidad_territorial')
     op.drop_table('projects', schema='sistema_unidad_territorial')
     op.drop_table('certificates', schema='sistema_unidad_territorial')
+    op.drop_table('authentication_log', schema='sistema_unidad_territorial')
     op.drop_table('address_evidences', schema='sistema_unidad_territorial')
     op.drop_table('user_sessions', schema='sistema_unidad_territorial')
     op.drop_table('user_roles', schema='sistema_unidad_territorial')
