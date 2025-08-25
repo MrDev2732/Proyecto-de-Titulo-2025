@@ -2,7 +2,7 @@
 Endpoints de autenticación para la API.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 from uuid import uuid4, UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Request
@@ -20,13 +20,56 @@ from src.schemas.auth_schemas import (
     ErrorResponse
 )
 from src.services.auth_service import AuthService, GoogleOAuthService
-from src.core.security import create_user_tokens, verify_token
+from src.core.security import verify_token
 from src.core.dependencies import get_current_active_user, require_admin
 from src.database import User
+from src.database.repositories.auth_log_repository import AuthenticationLogRepository
 
 
 # Router para endpoints de autenticación
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
+
+
+def get_client_ip(request: Request) -> Optional[str]:
+    """
+    Obtener la IP real del cliente considerando proxies y load balancers.
+
+    Busca en orden de prioridad:
+    1. X-Forwarded-For (estándar para proxies)
+    2. X-Real-IP (usado por Nginx)
+    3. X-Client-IP (algunos proxies)
+    4. CF-Connecting-IP (Cloudflare)
+    5. request.client.host (conexión directa)
+
+    Args:
+        request: Request de FastAPI
+
+    Returns:
+        str: IP del cliente o None si no se puede determinar
+    """
+    # Headers comunes de proxies (en orden de prioridad)
+    ip_headers = [
+        "x-forwarded-for",      # Estándar para proxies/load balancers
+        "x-real-ip",            # Nginx
+        "x-client-ip",          # Algunos proxies
+        "cf-connecting-ip",     # Cloudflare
+        "x-cluster-client-ip",  # Kubernetes
+    ]
+
+    for header in ip_headers:
+        ip = request.headers.get(header)
+        if ip:
+            # X-Forwarded-For puede tener múltiples IPs separadas por comas
+            # La primera es la IP original del cliente
+            if "," in ip:
+                ip = ip.split(",")[0].strip()
+
+            # Validar que la IP tenga formato válido
+            if ip and ip.strip():
+                return ip.strip()
+
+    # Fallback: IP de la conexión directa
+    return request.client.host if request.client else None
 
 
 @router.post(
@@ -52,29 +95,41 @@ async def login(
 
     Retorna tokens de acceso y refresh junto con información del usuario.
     """
+    # Obtener información del cliente
+    ip_address = get_client_ip(request)
+    user_agent = request.headers.get("user-agent")
+
     # Autenticar usuario
-    user = await AuthService.authenticate_user(
+    auth_result = await AuthService.authenticate_user(
         session, 
         login_data.email, 
-        login_data.password
+        login_data.password,
+        ip=ip_address,
+        user_agent=user_agent
     )
 
-    if not user:
+    if not auth_result:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email o contraseña incorrectos"
         )
 
-    # Obtener información del cliente
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
+    user, auth_log_id = auth_result
 
-    # Crear sesión y tokens
+    # Crear sesión y tokens (sin logging adicional porque ya se registró en authenticate_user)
     tokens = await AuthService.create_session_for_user(
         session,
         user,
         ip_address=ip_address,
-        user_agent=user_agent
+        user_agent=user_agent,
+        log_authentication=False
+    )
+
+    # Actualizar el log con el user_session_id
+    await AuthenticationLogRepository.update_auth_log_session(
+        session,
+        auth_log_id,
+        UUID(tokens["session_id"])
     )
 
     # Convertir usuario a response
@@ -213,68 +268,167 @@ async def register_user(
     summary="Iniciar OAuth con Google",
     description="Redirige al usuario a Google para autenticación OAuth"
 )
-async def google_oauth_login():
+async def google_oauth_login(
+    request: Request,
+    frontend_redirect: str = Query(None, description="URL del frontend para redirección después del OAuth")
+):
     """
     Iniciar proceso de OAuth con Google.
 
     Redirige al usuario a la página de autorización de Google.
+
+    - **frontend_redirect**: URL opcional del frontend donde redirigir después del OAuth exitoso
     """
     # Generar estado para validación CSRF
     state = str(uuid4())
 
+    # Si hay frontend_redirect, guardarlo en el estado para recuperarlo después
+    if frontend_redirect:
+        # Guardar la URL de redirección en la sesión o cache temporal
+        # Por simplicidad, la incluiremos en el state (en producción usar cache/redis)
+        import base64
+        import json
+        state_data = {
+            "state": state,
+            "frontend_redirect": frontend_redirect
+        }
+        encoded_state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode()
+    else:
+        encoded_state = state
+
     # Obtener URL de autorización
-    auth_url = GoogleOAuthService.get_authorization_url(state)
+    auth_url = GoogleOAuthService.get_authorization_url(encoded_state)
 
     return RedirectResponse(url=auth_url, status_code=302)
 
 
 @router.get(
     "/google/callback",
-    response_model=TokenResponse,
     summary="Callback de OAuth con Google",
     description="Maneja la respuesta de Google OAuth y autentica al usuario",
     responses={
+        200: {"model": TokenResponse, "description": "Autenticación exitosa (JSON response)"},
+        302: {"description": "Redirección al frontend con tokens"},
         400: {"model": ErrorResponse, "description": "Error en OAuth o código inválido"},
         422: {"model": ErrorResponse, "description": "Parámetros de callback inválidos"}
     }
 )
 async def google_oauth_callback(
+    request: Request,
     code: str = Query(..., description="Código de autorización de Google"),
     state: str = Query(None, description="Estado para validación CSRF"),
     session: AsyncSession = Depends(get_db_session)
-) -> TokenResponse:
+):
     """
     Callback de OAuth con Google.
 
     - **code**: Código de autorización devuelto por Google
     - **state**: Estado para validación CSRF
 
-    Completa el proceso de OAuth y devuelve tokens de autenticación.
+    Completa el proceso de OAuth y puede devolver tokens JSON o redirigir al frontend.
     """
+    # Decodificar el estado para ver si hay frontend_redirect
+    frontend_redirect = None
+    if state:
+        try:
+            import base64
+            import json
+            decoded_state = json.loads(base64.urlsafe_b64decode(state.encode()).decode())
+            if isinstance(decoded_state, dict) and "frontend_redirect" in decoded_state:
+                frontend_redirect = decoded_state["frontend_redirect"]
+        except:
+            # Si no se puede decodificar, usar el state tal como está
+            pass
+
     # Intercambiar código por información del usuario
     oauth_info = await GoogleOAuthService.exchange_code_for_user_info(code)
 
     if not oauth_info:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Error al obtener información del usuario de Google"
-        )
+        if frontend_redirect:
+            # Redirigir al frontend con error
+            error_url = f"{frontend_redirect}?error=oauth_failed"
+            return RedirectResponse(url=error_url, status_code=302)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Error al obtener información del usuario de Google"
+            )
+
+    # Obtener información del cliente
+    ip_address = get_client_ip(request)
+    user_agent = request.headers.get("user-agent")
 
     # Autenticar o crear usuario
-    user = await GoogleOAuthService.authenticate_or_create_oauth_user(
+    user, auth_log_id = await GoogleOAuthService.authenticate_or_create_oauth_user(
         session, 
-        oauth_info
+        oauth_info,
+        ip=ip_address,
+        user_agent=user_agent
     )
 
-    # Crear sesión y tokens
+    # Crear sesión y tokens (sin logging adicional porque ya se registró en OAuth)
     tokens = await AuthService.create_session_for_user(
         session,
-        user
+        user,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        log_authentication=False
+    )
+
+    # Actualizar el log de OAuth con el user_session_id
+    await AuthenticationLogRepository.update_auth_log_session(
+        session,
+        auth_log_id,
+        UUID(tokens["session_id"])
     )
 
     # Convertir usuario a response
     user_response = AuthService.user_to_response(user)
 
+    # Si hay frontend_redirect, redirigir al frontend con cookies seguras
+    if frontend_redirect:
+
+        # Preparar datos del usuario para cookie
+        user_data = {
+            "id": str(user_response.id),
+            "email": user_response.email,
+            "status": user_response.status,
+            "roles": [{"id": str(role.id), "name": role.name} for role in user_response.roles]
+        }
+
+        # Crear respuesta de redirección
+        response = RedirectResponse(url=frontend_redirect, status_code=302)
+
+        # Establecer cookies seguras con los tokens (solo para desarrollo local)
+        # En producción usar httponly=True, secure=True
+        response.set_cookie(
+            "oauth_access_token", 
+            tokens["access_token"],
+            max_age=tokens["expires_in"],
+            httponly=False,  # False para que JS pueda leerla (solo desarrollo)
+            secure=False,    # False para HTTP local (en prod usar True)
+            samesite="lax"
+        )
+        response.set_cookie(
+            "oauth_refresh_token", 
+            tokens["refresh_token"],
+            max_age=7 * 24 * 60 * 60,  # 7 días
+            httponly=False,
+            secure=False,
+            samesite="lax"
+        )
+        response.set_cookie(
+            "oauth_user", 
+            json.dumps(user_data),
+            max_age=tokens["expires_in"],
+            httponly=False,
+            secure=False,
+            samesite="lax"
+        )
+
+        return response
+
+    # Si no hay frontend_redirect, devolver JSON como antes
     return TokenResponse(
         access_token=tokens["access_token"],
         refresh_token=tokens["refresh_token"],
@@ -381,4 +535,3 @@ async def validate_token(
     Útil para que otros servicios verifiquen la validez de un token.
     """
     return AuthService.user_to_response(current_user)
-
