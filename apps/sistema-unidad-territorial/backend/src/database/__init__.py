@@ -32,6 +32,7 @@ __all__ = [
     "AuthMagicLink",
     "UserOauthIdentity",
     "UserSession",
+    "AuthenticationLog",
     "user_roles_table",
     "Resident",
     "AddressEvidence",
@@ -49,6 +50,10 @@ __all__ = [
     # Enums (imported from enums.__init__)
     "UserStatus",
     "OAuthProvider",
+    "AuthProvider",
+    "AuthMethod",
+    "AuthResult", 
+    "AuthFailureReason",
     "CertificateStatus",
     "EvidenceType",
     "ReservationStatus",

@@ -196,20 +196,6 @@ class RoleRepository:
         await session.flush()
         return role
 
-    @staticmethod
-    async def get_all_roles(session: AsyncSession) -> List[Role]:
-        """
-        Obtener todos los roles.
-
-        Args:
-            session: Sesión de base de datos
-
-        Returns:
-            List[Role]: Lista de todos los roles
-        """
-        result = await session.execute(select(Role))
-        return result.scalars().all()
-
 
 class OAuthRepository:
     """Repository para operaciones OAuth."""
@@ -415,77 +401,3 @@ class SessionRepository:
             user_session: Sesión a revocar
         """
         user_session.revoke()
-
-    @staticmethod
-    async def revoke_all_user_sessions(
-        session: AsyncSession,
-        user_id: UUID
-    ) -> None:
-        """
-        Revocar todas las sesiones de un usuario.
-
-        Args:
-            session: Sesión de base de datos
-            user_id: ID del usuario
-        """
-        await session.execute(
-            update(UserSession)
-            .where(
-                UserSession.user_id == user_id,
-                UserSession.is_active == True
-            )
-            .values(
-                is_active=False,
-                revoked_at=now_chile()
-            )
-        )
-
-    @staticmethod
-    async def cleanup_expired_sessions(session: AsyncSession) -> int:
-        """
-        Limpiar sesiones expiradas.
-
-        Args:
-            session: Sesión de base de datos
-
-        Returns:
-            int: Número de sesiones limpiadas
-        """
-        result = await session.execute(
-            update(UserSession)
-            .where(
-                UserSession.expires_at < now_chile(),
-                UserSession.is_active == True
-            )
-            .values(
-                is_active=False,
-                revoked_at=now_chile()
-            )
-        )
-        return result.rowcount
-
-    @staticmethod
-    async def get_user_active_sessions(
-        session: AsyncSession,
-        user_id: UUID
-    ) -> List[UserSession]:
-        """
-        Obtener sesiones activas de un usuario.
-
-        Args:
-            session: Sesión de base de datos
-            user_id: ID del usuario
-
-        Returns:
-            List[UserSession]: Lista de sesiones activas
-        """
-        result = await session.execute(
-            select(UserSession)
-            .where(
-                UserSession.user_id == user_id,
-                UserSession.is_active == True,
-                UserSession.expires_at > now_chile()
-            )
-            .order_by(UserSession.created_at.desc())
-        )
-        return list(result.scalars().all())

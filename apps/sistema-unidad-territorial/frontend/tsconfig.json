@@ -3,7 +3,13 @@
   "compilerOptions": {
     "skipLibCheck": true,
     "isolatedModules": true,
-    "module": "preserve"
+    "module": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@app/*": [
+        "sistema-unidad-territorial/frontend/src/app/*"
+      ]
+    }
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
+from uuid import UUID as PyUUID
 
 from sqlalchemy import (
     Boolean,
@@ -13,13 +14,17 @@ from sqlalchemy import (
     UniqueConstraint,
     CheckConstraint,
     Index,
+    SmallInteger,
 )
-from sqlalchemy.dialects.postgresql import CITEXT, UUID
+from sqlalchemy.dialects.postgresql import CITEXT, UUID, INET
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import BaseModel
-from src.database.enums import UserStatus, OAuthProvider
+from src.database.models.base import BaseModel, TenantBaseModel
+from src.database.enums import (
+    UserStatus, AuthProvider, AuthMethod, 
+    AuthResult, AuthFailureReason
+)
 from src.database.timezone_utils import now_chile
 
 
@@ -174,7 +179,7 @@ class AuthMagicLink(BaseModel):
         return f"AuthMagicLink(id={self.id}, user_id={self.user_id}, expires_at={self.expires_at})"
 
 
-class UserOauthIdentity(BaseModel):
+class UserOauthIdentity(TenantBaseModel):
     """OAuth identity model for users."""
 
     __tablename__ = 'user_oauth_identities'
@@ -226,7 +231,7 @@ class UserOauthIdentity(BaseModel):
     # Constraints and schema
     __table_args__ = (
         CheckConstraint(
-            f"provider IN ('{OAuthProvider.GOOGLE}')",
+            "provider IN ('google')",
             name='ck_oauth_provider'
         ),
         UniqueConstraint('provider', 'provider_user_id', name='uq_provider_identity'),
@@ -243,11 +248,25 @@ class UserOauthIdentity(BaseModel):
         return f"UserOauthIdentity(id={self.id}, provider={self.provider}, provider_user_id={self.provider_user_id})"
 
 
-class UserSession(BaseModel):
+class UserSession(TenantBaseModel):
     """User session model for token management and security."""
 
     __tablename__ = 'user_sessions'
-    __table_args__ = {'schema': SCHEMA}
+
+    # Constraints y schema mejorados
+    __table_args__ = (
+        # Índice único para el hash del access token (crítico para lookup)
+        Index('idx_user_session_access_token', 'access_token_hash', unique=True),
+        # Índice compuesto para sesiones activas por usuario
+        Index('idx_user_session_user_active', 'user_id', 'is_active'),
+        # Índice para tenant y sesiones activas
+        Index('idx_user_session_tenant_active', 'tenant_id', 'is_active'),
+        # Índice para cleanup de sesiones expiradas
+        Index('idx_user_session_expires', 'expires_at'),
+        # Índice para análisis de IP
+        Index('idx_user_session_ip_created', 'ip_address', 'created_at'),
+        {'schema': SCHEMA}
+    )
 
     user_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
@@ -311,3 +330,141 @@ class UserSession(BaseModel):
 
     def __repr__(self) -> str:
         return f"UserSession(id={self.id}, user_id={self.user_id}, is_active={self.is_active})"
+
+
+class AuthenticationLog(TenantBaseModel):
+    """Tabla robusta para logging de autenticaciones con contexto de seguridad."""
+
+    __tablename__ = 'authentication_log'
+
+    # Referencias principales
+    user_id: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='SET NULL'), 
+        nullable=True,
+        comment="ID del usuario (NULL si no se pudo identificar)"
+    )
+    user_session_id: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.user_sessions.id', ondelete='SET NULL'), 
+        nullable=True,
+        comment="ID de sesión creada en caso de éxito"
+    )
+
+    # Datos de autenticación
+    email: Mapped[Optional[str]] = Column(
+        CITEXT, 
+        nullable=True,
+        comment="Email utilizado en el intento (puede no existir como usuario)"
+    )
+    provider: Mapped[AuthProvider] = Column(
+        Enum(AuthProvider, name='auth_provider_enum', values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        comment="Proveedor de autenticación (local, google, magic_link)"
+    )
+    method: Mapped[AuthMethod] = Column(
+        Enum(AuthMethod, name='auth_method_enum', values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        comment="Método de autenticación (password, oauth, magic_link)"
+    )
+    result: Mapped[AuthResult] = Column(
+        Enum(AuthResult, name='auth_result_enum', values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        comment="Resultado del intento (SUCCESS, FAIL)"
+    )
+
+    # Contexto de fallo
+    failure_reason: Mapped[Optional[AuthFailureReason]] = Column(
+        Enum(AuthFailureReason, name='auth_failure_reason_enum', values_callable=lambda obj: [e.value for e in obj]),
+        nullable=True,
+        comment="Razón específica del fallo"
+    )
+    error_code: Mapped[Optional[str]] = Column(
+        Text, 
+        nullable=True,
+        comment="Código de error interno del sistema"
+    )
+
+    # Contexto de seguridad
+    mfa_used: Mapped[bool] = Column(
+        Boolean, 
+        nullable=False, 
+        default=False,
+        server_default='false',
+        comment="Si se utilizó autenticación multifactor"
+    )
+    risk_score: Mapped[Optional[int]] = Column(
+        SmallInteger,
+        nullable=True,
+        comment="Puntuación de riesgo calculada (0-100)"
+    )
+
+    # Contexto técnico
+    ip: Mapped[Optional[str]] = Column(
+        INET, 
+        nullable=True,
+        comment="Dirección IP del cliente"
+    )
+    user_agent: Mapped[Optional[str]] = Column(
+        Text, 
+        nullable=True,
+        comment="User Agent del navegador/cliente"
+    )
+    geo_country: Mapped[Optional[str]] = Column(
+        String(2), 
+        nullable=True,
+        comment="Código de país ISO-3166 alpha-2"
+    )
+
+    # Correlación
+    request_id: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True), 
+        nullable=True,
+        comment="ID de correlación con logs de aplicación"
+    )
+
+    # Constraints y schema
+    __table_args__ = (
+        CheckConstraint(
+            "risk_score IS NULL OR (risk_score >= 0 AND risk_score <= 100)",
+            name='ck_auth_log_risk_score_range'
+        ),
+        CheckConstraint(
+            "geo_country IS NULL OR length(geo_country) = 2",
+            name='ck_auth_log_geo_country_format'
+        ),
+        CheckConstraint(
+            "(result = 'SUCCESS' AND failure_reason IS NULL) OR (result = 'FAIL')",
+            name='ck_auth_log_success_no_failure_reason'
+        ),
+        # Índices para consultas reales y performance
+        Index('idx_authlog_user_ts', 'user_id', 'created_at'),
+        Index('idx_authlog_email_ts', 'email', 'created_at'), 
+        Index('idx_authlog_ip_ts', 'ip', 'created_at'),
+        Index('idx_authlog_tenant_ts', 'tenant_id', 'created_at'),
+        # Índice parcial para fallos (crítico para rate limiting)
+        Index(
+            'idx_authlog_fail_ts', 
+            'created_at',
+            postgresql_where="result = 'FAIL'"
+        ),
+        # Índice para búsquedas por request_id
+        Index('idx_authlog_request', 'request_id'),
+        {'schema': SCHEMA}
+    )
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship(
+        "User", 
+        foreign_keys=[user_id],
+        back_populates=None  # No necesitamos relación bidireccional
+    )
+    user_session: Mapped[Optional["UserSession"]] = relationship(
+        "UserSession",
+        foreign_keys=[user_session_id], 
+        back_populates=None  # No necesitamos relación bidireccional
+    )
+
+    def __repr__(self) -> str:
+        return (f"AuthenticationLog(id={self.id}, result={self.result}, "
+                f"provider={self.provider}, email={self.email}, ip={self.ip})")
