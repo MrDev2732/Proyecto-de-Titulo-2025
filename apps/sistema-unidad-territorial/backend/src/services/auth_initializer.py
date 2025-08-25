@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.repositories.auth_repository import AuthRepository, RoleRepository
 from src.database.enums import UserStatus
+from src.database.triggers.auth_triggers import AuthenticationTriggers
 from src.core.security import get_password_hash
 from src.core.logging import get_logger
 
@@ -111,11 +112,31 @@ class AuthInitializer:
         await session.commit()
 
     @staticmethod
+    async def setup_auth_triggers(session: AsyncSession) -> None:
+        """
+        Configurar triggers y vistas de autenticación.
+
+        Args:
+            session: Sesión de base de datos
+        """
+        logger.info("🔧 Configurando triggers de autenticación...")
+
+        try:
+            await AuthenticationTriggers.setup_all_auth_triggers(session)
+            logger.info("✅ Triggers de autenticación configurados")
+
+        except Exception as e:
+            logger.warning(f"⚠️ No se pudieron configurar los triggers: {e}")
+            logger.info("ℹ️ Los triggers se configurarán después de ejecutar las migraciones de la base de datos")
+            # No hacer rollback ni raise, solo continuar
+
+    @staticmethod
     async def initialize_auth_data(
         session: AsyncSession,
         admin_email: str = "vin.orellana@duocuc.cl",
         admin_password: str = "admin123",
-        force_update_admin: bool = False
+        force_update_admin: bool = False,
+        setup_triggers: bool = True
     ) -> None:
         """
         Inicializar todos los datos básicos de autenticación.
@@ -125,8 +146,9 @@ class AuthInitializer:
             admin_email: Email del administrador inicial
             admin_password: Contraseña del administrador inicial
             force_update_admin: Si True, actualiza el admin si ya existe
+            setup_triggers: Si True, configura los triggers de autenticación
         """
-        logger.info("🚀 Iniciando configuración de datos de autenticación...")
+        logger.info("🚀 Iniciando configuración completa de autenticación...")
 
         try:
             # Crear roles predeterminados
@@ -140,9 +162,51 @@ class AuthInitializer:
                 force_update_admin
             )
 
-            logger.info("✅ Configuración de datos de autenticación completada")
+            # Configurar triggers de autenticación si se solicita
+            if setup_triggers:
+                await AuthInitializer.setup_auth_triggers(session)
+
+            logger.info("✅ Configuración completa de autenticación terminada")
 
         except Exception as e:
             logger.error(f"❌ Error en configuración de autenticación: {e}")
+            await session.rollback()
+            raise
+
+    @staticmethod
+    async def initialize_only_triggers(session: AsyncSession) -> None:
+        """
+        Configurar solo los triggers de autenticación (útil para migraciones).
+
+        Args:
+            session: Sesión de base de datos
+        """
+        logger.info("🔧 Configurando únicamente triggers de autenticación...")
+
+        try:
+            await AuthInitializer.setup_auth_triggers(session)
+            logger.info("✅ Triggers de autenticación configurados exitosamente")
+
+        except Exception as e:
+            logger.error(f"❌ Error configurando triggers: {e}")
+            await session.rollback()
+            raise
+
+    @staticmethod
+    async def drop_auth_triggers(session: AsyncSession) -> None:
+        """
+        Eliminar todos los triggers de autenticación.
+
+        Args:
+            session: Sesión de base de datos
+        """
+        logger.info("🗑️ Eliminando triggers de autenticación...")
+
+        try:
+            await AuthenticationTriggers.drop_all_auth_triggers(session)
+            logger.info("✅ Triggers de autenticación eliminados")
+
+        except Exception as e:
+            logger.error(f"❌ Error eliminando triggers: {e}")
             await session.rollback()
             raise
