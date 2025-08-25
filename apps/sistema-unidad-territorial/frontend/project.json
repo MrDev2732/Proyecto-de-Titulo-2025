@@ -19,6 +19,11 @@
           {
             "glob": "**/*",
             "input": "sistema-unidad-territorial/frontend/public"
+          },
+          {
+            "glob": "**/*",
+            "input": "sistema-unidad-territorial/frontend/src/assets",
+            "output": "assets"
           }
         ],
         "styles": ["sistema-unidad-territorial/frontend/src/styles.scss"]
@@ -55,7 +60,8 @@
           "buildTarget": "frontend:build:production"
         },
         "development": {
-          "buildTarget": "frontend:build:development"
+          "buildTarget": "frontend:build:development",
+          "proxyConfig": "sistema-unidad-territorial/frontend/proxy.conf.json"
         }
       },
       "defaultConfiguration": "development"
