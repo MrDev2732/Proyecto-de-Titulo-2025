@@ -93,31 +93,3 @@ async def get_transaction_session() -> AsyncGenerator[AsyncSession, None]:
         raise
     finally:
         await session.close()
-
-
-async def get_faststream_session() -> AsyncSession:
-    """
-    Crea una sesión específica para FastStream.
-    
-    Este método crea una sesión directa sin utilizar un generador.
-    """
-    try:
-        # Verificar que tenemos un bucle asyncio
-        asyncio.get_running_loop()
-        session = async_session_factory()
-        logger.debug("Sesión FastStream creada correctamente")
-        return session
-    except Exception as e:
-        logger.error(f"Error al crear sesión FastStream: {str(e)}", exc_info=True)
-        raise
-
-
-async def execute_sql_file(session: AsyncSession, file_path: str) -> None:
-    """
-    Ejecuta un archivo SQL utilizando la sesión proporcionada.
-    """
-    logger.info(f"Ejecutando archivo SQL: {file_path}")
-    with open(file_path, "r") as f:
-        sql_content = f.read()
-    await session.execute(text(sql_content))
-    logger.info(f"Archivo SQL ejecutado correctamente: {file_path}")
