@@ -22,8 +22,12 @@ from sqlalchemy.orm import relationship, Mapped
 from src.database import SCHEMA
 from src.database.models.base import BaseModel, TenantBaseModel
 from src.database.enums import (
-    UserStatus, AuthProvider, AuthMethod, 
-    AuthResult, AuthFailureReason
+    UserStatus,
+    AuthProvider,
+    AuthMethod, 
+    AuthResult,
+    AuthFailureReason,
+    RoleScope,
 )
 from src.database.timezone_utils import now_chile
 
@@ -64,12 +68,11 @@ class User(BaseModel):
         {'schema': SCHEMA}
     )
 
-    # Relationships
-    roles: Mapped[List["Role"]] = relationship(
-        "Role", 
-        secondary=lambda: user_roles_table, 
-        back_populates="users",
-        lazy="selectin"
+    # Relationships - Solo sistema unificado
+    role_assignments: Mapped[List["RoleAssignment"]] = relationship(
+        "RoleAssignment",
+        foreign_keys="RoleAssignment.user_id",
+        back_populates="user"
     )
     oauth_identities: Mapped[List["UserOauthIdentity"]] = relationship(
         "UserOauthIdentity",
@@ -98,38 +101,39 @@ class User(BaseModel):
 
 
 class Role(BaseModel):
-    """Role model for the system."""
+    """Role model for the system with scope support."""
 
     __tablename__ = 'roles'
     __table_args__ = {'schema': SCHEMA}
 
     name: Mapped[str] = Column(
         String(50), 
-        nullable=False, 
-        unique=True,
+        nullable=False,
         comment="Role name"
     )
+    scope: Mapped[RoleScope] = Column(
+        Enum(RoleScope, name='role_scope_enum', values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=RoleScope.GLOBAL,
+        server_default='GLOBAL',
+        comment="Role scope (GLOBAL, TENANT, COMMUNITY)"
+    )
 
-    # Relationships
-    users: Mapped[List[User]] = relationship(
-        User,
-        secondary=lambda: user_roles_table,
-        back_populates="roles",
-        lazy="selectin"
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint('name', 'scope', name='uq_role_name_scope'),
+        {'schema': SCHEMA}
+    )
+
+    # Relationships - Solo sistema unificado
+    role_assignments: Mapped[List["RoleAssignment"]] = relationship(
+        "RoleAssignment",
+        back_populates="role",
+        cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
-        return f"Role(id={self.id}, name={self.name})"
-
-
-# Many-to-many association table for User and Role
-user_roles_table = Table(
-    'user_roles',
-    BaseModel.metadata,
-    Column('user_id', UUID(as_uuid=True), ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), primary_key=True),
-    Column('role_id', UUID(as_uuid=True), ForeignKey(f'{SCHEMA}.roles.id', ondelete='CASCADE'), primary_key=True),
-    schema=SCHEMA
-)
+        return f"Role(id={self.id}, name={self.name}, scope={self.scope})"
 
 
 class AuthMagicLink(BaseModel):
@@ -468,3 +472,68 @@ class AuthenticationLog(TenantBaseModel):
     def __repr__(self) -> str:
         return (f"AuthenticationLog(id={self.id}, result={self.result}, "
                 f"provider={self.provider}, email={self.email}, ip={self.ip})")
+
+
+class RoleAssignment(BaseModel):
+    """Unified role assignment model - single source of truth for all role assignments."""
+
+    __tablename__ = 'role_assignments'
+
+    role_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.roles.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="Role ID"
+    )
+    user_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="User ID"
+    )
+    tenant_id: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.tenants.id', ondelete='CASCADE'), 
+        nullable=True,
+        comment="Tenant ID (for TENANT scope roles)"
+    )
+    community_id: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.communities.id', ondelete='CASCADE'), 
+        nullable=True,
+        comment="Community ID (for COMMUNITY scope roles)"
+    )
+
+    # Constraints and schema
+    __table_args__ = (
+        # Unique assignment per role/user/context
+        UniqueConstraint('role_id', 'user_id', 'tenant_id', 'community_id', name='uq_role_assignment'),
+
+        # Indexes for performance
+        Index('idx_roleass_user', 'user_id'),
+        Index('idx_roleass_tenant', 'tenant_id'),
+        Index('idx_roleass_community', 'community_id'),
+        Index('idx_roleass_role', 'role_id'),
+        
+        {'schema': SCHEMA}
+    )
+
+    # Relationships
+    role: Mapped[Role] = relationship("Role", back_populates="role_assignments")
+    user: Mapped[User] = relationship("User", back_populates="role_assignments")
+    tenant: Mapped[Optional["Tenant"]] = relationship(
+        "Tenant", 
+        foreign_keys=[tenant_id]
+    )
+    community: Mapped[Optional["Community"]] = relationship(
+        "Community", 
+        foreign_keys=[community_id]
+    )
+
+    def __repr__(self) -> str:
+        context = ""
+        if self.tenant_id:
+            context += f", tenant_id={self.tenant_id}"
+        if self.community_id:
+            context += f", community_id={self.community_id}"
+        return f"RoleAssignment(id={self.id}, role_id={self.role_id}, user_id={self.user_id}{context})"
