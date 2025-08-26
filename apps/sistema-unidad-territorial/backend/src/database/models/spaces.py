@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import (
@@ -16,7 +16,6 @@ from sqlalchemy.orm import relationship, Mapped
 from src.database import SCHEMA
 from src.database.models.base import TenantBaseModel
 from src.database.enums import ReservationStatus
-from src.database.timezone_utils import now_chile
 
 
 class Space(TenantBaseModel):
