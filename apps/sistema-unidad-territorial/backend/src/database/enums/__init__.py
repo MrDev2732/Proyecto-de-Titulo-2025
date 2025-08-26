@@ -4,6 +4,13 @@ from src.database.enums.project_status import ProjectStatus
 from src.database.enums.reservation_status import ReservationStatus
 from src.database.enums.user_status import UserStatus, OAuthProvider
 from src.database.enums.auth_log_status import AuthProvider, AuthMethod, AuthResult, AuthFailureReason
+from src.database.enums.community_status import (
+    MembershipStatus,
+    RegistrationStatus,
+    RegistrationProvider,
+    AttachmentKind,
+    RoleScope,
+)
 
 
 __all__ = [
@@ -30,4 +37,11 @@ __all__ = [
     # Notification enums
     "NotificationStatus",
     "NotificationType",
+
+    # Community enums
+    "MembershipStatus",
+    "RegistrationStatus",
+    "RegistrationProvider",
+    "AttachmentKind",
+    "RoleScope",
 ]
