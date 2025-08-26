@@ -1,8 +1,12 @@
 from typing import List, Optional
-import os
 
 from sqlalchemy import (
-    Column, ForeignKey, String, Text, CheckConstraint, Index
+    Column,
+    ForeignKey,
+    String,
+    Text,
+    CheckConstraint,
+    Index
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
