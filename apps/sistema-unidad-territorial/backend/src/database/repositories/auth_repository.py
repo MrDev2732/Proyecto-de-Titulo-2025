@@ -6,16 +6,15 @@ roles y autenticación OAuth.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import User, Role, UserOauthIdentity, UserSession
+from src.database.models import User, UserOauthIdentity, UserSession, RoleAssignment
 from src.database.enums import UserStatus
-from src.database.timezone_utils import now_chile
 from src.core.logging import get_logger
 
 
@@ -39,7 +38,7 @@ class AuthRepository:
         """
         result = await session.execute(
             select(User)
-            .options(selectinload(User.roles))
+            .options(selectinload(User.role_assignments).selectinload(RoleAssignment.role))
             .where(User.email == email.lower())
         )
         return result.scalar_one_or_none()
@@ -58,7 +57,7 @@ class AuthRepository:
         """
         result = await session.execute(
             select(User)
-            .options(selectinload(User.roles))
+            .options(selectinload(User.role_assignments).selectinload(RoleAssignment.role))
             .where(User.id == user_id)
         )
         return result.scalar_one_or_none()
@@ -95,36 +94,6 @@ class AuthRepository:
         await session.flush()  # Para obtener el ID
         return user
 
-    @staticmethod
-    async def assign_roles_to_user(
-        session: AsyncSession,
-        user: User,
-        role_names: List[str]
-    ) -> None:
-        """
-        Asignar roles a un usuario.
-
-        Args:
-            session: Sesión de base de datos
-            user: Usuario al que asignar roles
-            role_names: Lista de nombres de roles
-        """
-        if not role_names:
-            return
-
-        # Buscar roles existentes
-        role_objects = []
-        for role_name in role_names:
-            role = await RoleRepository.find_role_by_name(session, role_name)
-            if role:
-                role_objects.append(role)
-            else:
-                logger.warning(f"Rol '{role_name}' no encontrado")
-
-        # Asignar roles al usuario
-        # Refresh para cargar la relación roles antes de acceder
-        await session.refresh(user, ["roles"])
-        user.roles.extend(role_objects)
 
     @staticmethod
     async def update_user_password(
@@ -159,44 +128,6 @@ class AuthRepository:
         user.status = status
 
 
-class RoleRepository:
-    """Repository para operaciones con roles."""
-
-    @staticmethod
-    async def find_role_by_name(session: AsyncSession, name: str) -> Optional[Role]:
-        """
-        Buscar rol por nombre.
-
-        Args:
-            session: Sesión de base de datos
-            name: Nombre del rol
-
-        Returns:
-            Role: Rol encontrado o None
-        """
-        result = await session.execute(
-            select(Role).where(Role.name == name)
-        )
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def create_role(session: AsyncSession, name: str) -> Role:
-        """
-        Crear nuevo rol.
-
-        Args:
-            session: Sesión de base de datos
-            name: Nombre del rol
-
-        Returns:
-            Role: Rol creado
-        """
-        role = Role(name=name)
-        session.add(role)
-        await session.flush()
-        return role
-
-
 class OAuthRepository:
     """Repository para operaciones OAuth."""
 
@@ -219,7 +150,10 @@ class OAuthRepository:
         """
         result = await session.execute(
             select(UserOauthIdentity)
-            .options(selectinload(UserOauthIdentity.user).selectinload(User.roles))
+            .options(
+                selectinload(UserOauthIdentity.user)
+                .selectinload(User.role_assignments).selectinload(RoleAssignment.role)
+            )
             .where(
                 UserOauthIdentity.provider == provider,
                 UserOauthIdentity.provider_user_id == provider_user_id
@@ -355,7 +289,7 @@ class SessionRepository:
         """
         result = await session.execute(
             select(UserSession)
-            .options(selectinload(UserSession.user).selectinload(User.roles))
+            .options(selectinload(UserSession.user).selectinload(User.role_assignments).selectinload("role"))
             .where(
                 UserSession.access_token_hash == access_token_hash,
                 UserSession.is_active == True
@@ -380,7 +314,7 @@ class SessionRepository:
         """
         result = await session.execute(
             select(UserSession)
-            .options(selectinload(UserSession.user).selectinload(User.roles))
+            .options(selectinload(UserSession.user).selectinload(User.role_assignments).selectinload("role"))
             .where(
                 UserSession.refresh_token_hash == refresh_token_hash,
                 UserSession.is_active == True

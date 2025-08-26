@@ -10,7 +10,6 @@ from sqlalchemy import (
     String,
     Text,
     CheckConstraint,
-    text,
 )
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID

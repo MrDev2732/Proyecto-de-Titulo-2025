@@ -1,9 +1,15 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from sqlalchemy import (
-    Column, ForeignKey, String, Text, Integer, DateTime, 
-    CheckConstraint, Index, text
+    Column,
+    ForeignKey,
+    String,
+    Text,
+    Integer,
+    DateTime, 
+    CheckConstraint,
+    Index
 )
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
@@ -11,7 +17,7 @@ from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
 from src.database.models.base import BaseModel
-from src.database.enums import NotificationStatus, NotificationType
+from src.database.enums import NotificationStatus
 from src.database.timezone_utils import now_chile
 
 
@@ -27,13 +33,13 @@ class Tenant(BaseModel):
         comment="Tenant name"
     )
 
-    # Only include created_at (inherited from BaseModel), 
+    # Only include created_at (inherited from BaseModel),
     # not updated_at as in the original SQL
     def __init__(self, **kwargs):
         # Remove updated_at if passed, as this model doesn't need it
         kwargs.pop('updated_at', None)
         super().__init__(**kwargs)
-    
+
     def __repr__(self) -> str:
         return f"Tenant(id={self.id}, name={self.name})"
 
