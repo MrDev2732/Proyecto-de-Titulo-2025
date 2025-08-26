@@ -23,8 +23,12 @@ from src.services.auth_service import AuthService, GoogleOAuthService
 from src.core.security import verify_token
 from src.core.dependencies import get_current_active_user, require_admin
 from src.database import User
+from src.database.repositories.auth_repository import AuthRepository
 from src.database.repositories.auth_log_repository import AuthenticationLogRepository
+from src.core.logging import get_logger
 
+
+logger = get_logger(__name__)
 
 # Router para endpoints de autenticación
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
@@ -109,10 +113,20 @@ async def login(
     )
 
     if not auth_result:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email o contraseña incorrectos"
-        )
+        # Check if it's a gating issue vs credentials issue
+        user_exists = await AuthRepository.find_user_by_email(session, login_data.email)
+        if user_exists and user_exists.password_hash:
+            # User exists with password, likely a gating/approval issue
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Su cuenta no está aprobada para acceder al sistema. Contacte a los moderadores de su comunidad."
+            )
+        else:
+            # Credentials issue or user doesn't exist
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email o contraseña incorrectos"
+            )
 
     user, auth_log_id = auth_result
 
@@ -344,6 +358,7 @@ async def google_oauth_callback(
     oauth_info = await GoogleOAuthService.exchange_code_for_user_info(code)
 
     if not oauth_info:
+        logger.info(f"❌ Failed to get OAuth info from Google")
         if frontend_redirect:
             # Redirigir al frontend con error
             error_url = f"{frontend_redirect}?error=oauth_failed"
@@ -354,17 +369,34 @@ async def google_oauth_callback(
                 detail="Error al obtener información del usuario de Google"
             )
 
+    logger.info(f"✅ Got OAuth info: {oauth_info.email}, provider_user_id: {oauth_info.provider_user_id}")
+
     # Obtener información del cliente
     ip_address = get_client_ip(request)
     user_agent = request.headers.get("user-agent")
 
-    # Autenticar o crear usuario
-    user, auth_log_id = await GoogleOAuthService.authenticate_or_create_oauth_user(
+    logger.info(f"🔍 About to authenticate OAuth user: {oauth_info.email}")
+    # Autenticar usuario (con gated access control)
+    auth_result = await GoogleOAuthService.authenticate_or_create_oauth_user(
         session, 
         oauth_info,
         ip=ip_address,
         user_agent=user_agent
     )
+    logger.info(f"🔍 Authentication result: {auth_result is not None}")
+
+    if not auth_result:
+        # Usuario no puede hacer login (no registrado/aprobado)
+        if frontend_redirect:
+            error_url = f"{frontend_redirect}?error=registration_required&message=Your+registration+request+has+been+submitted+for+approval"
+            return RedirectResponse(url=error_url, status_code=302)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Registration required. Your request has been submitted for approval by community moderators."
+            )
+
+    user, auth_log_id = auth_result
 
     # Crear sesión y tokens (sin logging adicional porque ya se registró en OAuth)
     tokens = await AuthService.create_session_for_user(
