@@ -10,9 +10,14 @@ from uuid import UUID
 
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from src.database.models import Role, RoleAssignment, User
+from src.database.models import (
+    Role, 
+    SystemRoleAssignment,
+    TenantRoleAssignment,
+    CommunityRoleAssignment,
+    User
+)
 from src.database.enums import RoleScope
 from src.core.logging import get_logger
 
@@ -84,86 +89,138 @@ class RoleRepository:
         return list(result.scalars().all())
 
     @staticmethod
-    async def assign_role_to_user(
+    async def assign_system_role_to_user(
         session: AsyncSession,
         role_id: UUID,
-        user_id: UUID,
-        tenant_id: Optional[UUID] = None,
-        community_id: Optional[UUID] = None
-    ) -> RoleAssignment:
+        user_id: UUID
+    ) -> SystemRoleAssignment:
         """
-        Asignar un rol a un usuario con contexto específico.
+        Asignar un rol de sistema a un usuario.
 
         Args:
             session: Sesión de base de datos
             role_id: ID del rol
             user_id: ID del usuario
-            tenant_id: ID del tenant (para roles TENANT)
-            community_id: ID de la comunidad (para roles COMMUNITY)
 
         Returns:
-            RoleAssignment: Asignación creada
+            SystemRoleAssignment: Asignación creada o existente
+
+        Raises:
+            ValueError: Si la asignación ya existe
         """
-        assignment = RoleAssignment(
+        # Verificar si la asignación ya existe
+        existing = await session.execute(
+            select(SystemRoleAssignment)
+            .where(
+                SystemRoleAssignment.role_id == role_id,
+                SystemRoleAssignment.user_id == user_id,
+                SystemRoleAssignment.deleted_at.is_(None)
+            )
+        )
+        existing_assignment = existing.scalar_one_or_none()
+
+        if existing_assignment:
+            # La asignación ya existe, retornarla
+            return existing_assignment
+
+        # Crear nueva asignación
+        assignment = SystemRoleAssignment(
             role_id=role_id,
-            user_id=user_id,
-            tenant_id=tenant_id,
-            community_id=community_id
+            user_id=user_id
         )
         session.add(assignment)
         await session.flush()
         return assignment
 
     @staticmethod
-    async def remove_role_assignment(
+    async def assign_tenant_role_to_user(
         session: AsyncSession,
-        assignment_id: UUID
-    ) -> bool:
+        role_id: UUID,
+        user_id: UUID,
+        tenant_id: UUID
+    ) -> TenantRoleAssignment:
         """
-        Remover una asignación de rol.
+        Asignar un rol de tenant a un usuario.
 
         Args:
             session: Sesión de base de datos
-            assignment_id: ID de la asignación
+            role_id: ID del rol
+            user_id: ID del usuario
+            tenant_id: ID del tenant
 
         Returns:
-            bool: True si se removió, False si no se encontró
+            TenantRoleAssignment: Asignación creada o existente
         """
-        result = await session.execute(
-            select(RoleAssignment).where(RoleAssignment.id == assignment_id)
+        # Verificar si la asignación ya existe
+        existing = await session.execute(
+            select(TenantRoleAssignment)
+            .where(
+                TenantRoleAssignment.role_id == role_id,
+                TenantRoleAssignment.user_id == user_id,
+                TenantRoleAssignment.tenant_id == tenant_id,
+                TenantRoleAssignment.deleted_at.is_(None)
+            )
         )
-        assignment = result.scalar_one_or_none()
-        
-        if assignment:
-            await session.delete(assignment)
-            return True
-        return False
+        existing_assignment = existing.scalar_one_or_none()
+
+        if existing_assignment:
+            # La asignación ya existe, retornarla
+            return existing_assignment
+
+        # Crear nueva asignación
+        assignment = TenantRoleAssignment(
+            role_id=role_id,
+            user_id=user_id,
+            tenant_id=tenant_id
+        )
+        session.add(assignment)
+        await session.flush()
+        return assignment
 
     @staticmethod
-    async def get_user_role_assignments(
+    async def assign_community_role_to_user(
         session: AsyncSession,
-        user_id: UUID
-    ) -> List[RoleAssignment]:
+        role_id: UUID,
+        user_id: UUID,
+        community_id: UUID
+    ) -> CommunityRoleAssignment:
         """
-        Obtener todas las asignaciones de roles de un usuario.
+        Asignar un rol de comunidad a un usuario.
 
         Args:
             session: Sesión de base de datos
+            role_id: ID del rol
             user_id: ID del usuario
+            community_id: ID de la comunidad
 
         Returns:
-            List[RoleAssignment]: Lista de asignaciones con roles cargados
+            CommunityRoleAssignment: Asignación creada o existente
         """
-        result = await session.execute(
-            select(RoleAssignment)
-            .options(
-                selectinload(RoleAssignment.role),
-                selectinload(RoleAssignment.tenant),
-                selectinload(RoleAssignment.community)
+        # Verificar si la asignación ya existe
+        existing = await session.execute(
+            select(CommunityRoleAssignment)
+            .where(
+                CommunityRoleAssignment.role_id == role_id,
+                CommunityRoleAssignment.user_id == user_id,
+                CommunityRoleAssignment.community_id == community_id,
+                CommunityRoleAssignment.deleted_at.is_(None)
             )
-            .where(RoleAssignment.user_id == user_id)
         )
-        return list(result.scalars().all())
+        existing_assignment = existing.scalar_one_or_none()
+
+        if existing_assignment:
+            # La asignación ya existe, retornarla
+            return existing_assignment
+
+        # Crear nueva asignación
+        assignment = CommunityRoleAssignment(
+            role_id=role_id,
+            user_id=user_id,
+            community_id=community_id
+        )
+        session.add(assignment)
+        await session.flush()
+        return assignment
 
     @staticmethod
     async def user_has_role_in_tenant(
@@ -185,12 +242,12 @@ class RoleRepository:
             bool: True si tiene el rol, False si no
         """
         result = await session.execute(
-            select(RoleAssignment)
+            select(TenantRoleAssignment)
             .join(Role)
             .where(
                 and_(
-                    RoleAssignment.user_id == user_id,
-                    RoleAssignment.tenant_id == tenant_id,
+                    TenantRoleAssignment.user_id == user_id,
+                    TenantRoleAssignment.tenant_id == tenant_id,
                     Role.name == role_name,
                     Role.scope == RoleScope.TENANT
                 )
@@ -218,12 +275,12 @@ class RoleRepository:
             bool: True si tiene el rol, False si no
         """
         result = await session.execute(
-            select(RoleAssignment)
+            select(CommunityRoleAssignment)
             .join(Role)
             .where(
                 and_(
-                    RoleAssignment.user_id == user_id,
-                    RoleAssignment.community_id == community_id,
+                    CommunityRoleAssignment.user_id == user_id,
+                    CommunityRoleAssignment.community_id == community_id,
                     Role.name == role_name,
                     Role.scope == RoleScope.COMMUNITY
                 )
@@ -232,13 +289,13 @@ class RoleRepository:
         return result.scalar_one_or_none() is not None
 
     @staticmethod
-    async def user_has_global_role(
+    async def user_has_system_role(
         session: AsyncSession,
         user_id: UUID,
         role_name: str
     ) -> bool:
         """
-        Verificar si un usuario tiene un rol global.
+        Verificar si un usuario tiene un rol de sistema.
 
         Args:
             session: Sesión de base de datos
@@ -249,15 +306,13 @@ class RoleRepository:
             bool: True si tiene el rol, False si no
         """
         result = await session.execute(
-            select(RoleAssignment)
+            select(SystemRoleAssignment)
             .join(Role)
             .where(
                 and_(
-                    RoleAssignment.user_id == user_id,
-                    RoleAssignment.tenant_id.is_(None),
-                    RoleAssignment.community_id.is_(None),
+                    SystemRoleAssignment.user_id == user_id,
                     Role.name == role_name,
-                    Role.scope == RoleScope.GLOBAL
+                    Role.scope == RoleScope.SYSTEM
                 )
             )
         )
@@ -280,100 +335,14 @@ class RoleRepository:
         """
         result = await session.execute(
             select(User)
-            .join(RoleAssignment, RoleAssignment.user_id == User.id)
-            .join(Role, Role.id == RoleAssignment.role_id)
+            .join(CommunityRoleAssignment, CommunityRoleAssignment.user_id == User.id)
+            .join(Role, Role.id == CommunityRoleAssignment.role_id)
             .where(
                 and_(
-                    RoleAssignment.community_id == community_id,
+                    CommunityRoleAssignment.community_id == community_id,
                     Role.name == "MODERATOR",
                     Role.scope == RoleScope.COMMUNITY
                 )
             )
         )
         return list(result.scalars().all())
-
-    @staticmethod
-    async def get_tenant_admins(
-        session: AsyncSession,
-        tenant_id: UUID
-    ) -> List[User]:
-        """
-        Obtener todos los administradores de un tenant.
-
-        Args:
-            session: Sesión de base de datos
-            tenant_id: ID del tenant
-
-        Returns:
-            List[User]: Lista de usuarios administradores
-        """
-        result = await session.execute(
-            select(User)
-            .join(RoleAssignment, RoleAssignment.user_id == User.id)
-            .join(Role, Role.id == RoleAssignment.role_id)
-            .where(
-                and_(
-                    RoleAssignment.tenant_id == tenant_id,
-                    Role.name == "ADMIN",
-                    Role.scope == RoleScope.TENANT
-                )
-            )
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def count_community_moderators(
-        session: AsyncSession,
-        community_id: UUID
-    ) -> int:
-        """
-        Contar el número de moderadores en una comunidad.
-
-        Args:
-            session: Sesión de base de datos
-            community_id: ID de la comunidad
-
-        Returns:
-            int: Número de moderadores
-        """
-        result = await session.execute(
-            select(RoleAssignment)
-            .join(Role)
-            .where(
-                and_(
-                    RoleAssignment.community_id == community_id,
-                    Role.name == "MODERATOR",
-                    Role.scope == RoleScope.COMMUNITY
-                )
-            )
-        )
-        return len(list(result.scalars().all()))
-
-    @staticmethod
-    async def user_is_admin_of_any_tenant(
-        session: AsyncSession,
-        user_id: UUID
-    ) -> bool:
-        """
-        Verificar si un usuario es administrador de algún tenant.
-
-        Args:
-            session: Sesión de base de datos
-            user_id: ID del usuario
-
-        Returns:
-            bool: True si es admin de algún tenant, False si no
-        """
-        result = await session.execute(
-            select(RoleAssignment)
-            .join(Role)
-            .where(
-                and_(
-                    RoleAssignment.user_id == user_id,
-                    RoleAssignment.tenant_id.is_not(None),
-                    Role.name == "ADMIN",
-                    Role.scope == RoleScope.TENANT
-                )
-            )
-        )
-        return result.scalar_one_or_none() is not None
