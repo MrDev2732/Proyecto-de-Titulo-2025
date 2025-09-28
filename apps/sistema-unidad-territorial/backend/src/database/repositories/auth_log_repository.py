@@ -12,9 +12,14 @@ from uuid import UUID
 from sqlalchemy import select, func, and_, or_, desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database import AuthenticationLog
-from src.database.enums import AuthResult, AuthFailureReason, AuthProvider, AuthMethod
-from src.database.timezone_utils import now_chile
+from src.database import (
+    AuthenticationLog,
+    now_chile,
+    AuthResult,
+    AuthFailureReason,
+    AuthProvider,
+    AuthMethod,
+)
 from src.core.logging import get_logger
 
 
