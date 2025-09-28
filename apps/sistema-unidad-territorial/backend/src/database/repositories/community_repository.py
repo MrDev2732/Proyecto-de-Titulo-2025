@@ -11,13 +11,12 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database.models import (
+from src.database import (
+    now_chile,
     Community,
     ResidentMembership,
     RegistrationRequest,
     RegistrationRequestAttachment,
-)
-from src.database.enums import (
     MembershipStatus,
     RegistrationStatus,
     RegistrationProvider,
@@ -84,6 +83,50 @@ class CommunityRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def get_community_by_id(
+        session: AsyncSession,
+        community_id: UUID
+    ) -> Optional[Community]:
+        """
+        Obtener una comunidad por su ID.
+
+        Args:
+            session: Sesión de base de datos
+            community_id: ID de la comunidad
+
+        Returns:
+            Community: Comunidad encontrada o None
+        """
+        result = await session.execute(
+            select(Community).where(Community.id == community_id)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def validate_community_belongs_to_tenant(
+        session: AsyncSession,
+        community_id: UUID,
+        tenant_id: UUID
+    ) -> bool:
+        """
+        Validar que una comunidad pertenezca a un tenant específico.
+
+        Args:
+            session: Sesión de base de datos
+            community_id: ID de la comunidad
+            tenant_id: ID del tenant
+
+        Returns:
+            bool: True si la comunidad pertenece al tenant
+        """
+        result = await session.execute(
+            select(Community).where(
+                and_(Community.id == community_id, Community.tenant_id == tenant_id)
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
     async def get_tenant_communities(
         session: AsyncSession,
         tenant_id: UUID
@@ -100,6 +143,50 @@ class CommunityRepository:
         """
         result = await session.execute(
             select(Community).where(Community.tenant_id == tenant_id)
+            .order_by(Community.name)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_active_communities_by_tenant(
+        session: AsyncSession,
+        tenant_id: UUID
+    ) -> List[Community]:
+        """
+        Obtener todas las comunidades activas de un tenant.
+
+        Por ahora retorna todas las comunidades, pero en el futuro
+        se puede agregar un campo 'active' o 'status' al modelo.
+
+        Args:
+            session: Sesión de base de datos
+            tenant_id: ID del tenant
+
+        Returns:
+            List[Community]: Lista de comunidades activas
+        """
+        result = await session.execute(
+            select(Community)
+            .where(Community.tenant_id == tenant_id)
+            # TODO: Agregar filtro por estado activo cuando se implemente
+            # .where(Community.active == True)
+            .order_by(Community.name)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_all_active_communities(session: AsyncSession) -> List[Community]:
+        """
+        Obtener todas las comunidades activas del sistema.
+
+        Returns:
+            List[Community]: Lista de todas las comunidades activas
+        """
+        result = await session.execute(
+            select(Community)
+            # TODO: Agregar filtro por estado activo cuando se implemente
+            # .where(Community.active == True)
+            .order_by(Community.name)
         )
         return list(result.scalars().all())
 
@@ -243,7 +330,6 @@ class ResidentMembershipRepository:
             membership.status = MembershipStatus.APPROVED
             membership.verified = verified
             if verified:
-                from src.database.timezone_utils import now_chile
                 membership.verified_at = now_chile()
             await session.flush()
 
@@ -260,9 +346,9 @@ class RegistrationRequestRepository:
         community_id: UUID,
         email: str,
         provider: RegistrationProvider,
-        full_name: Optional[str] = None,
-        rut: Optional[str] = None,
-        address: Optional[str] = None
+        full_name: str,
+        rut: str,
+        address: str
     ) -> RegistrationRequest:
         """
         Crear una nueva solicitud de registro.
@@ -274,7 +360,7 @@ class RegistrationRequestRepository:
             email: Email del solicitante
             provider: Proveedor de autenticación
             full_name: Nombre completo
-            rut: RUT (opcional)
+            rut: RUT
             address: Dirección
 
         Returns:
@@ -309,7 +395,9 @@ class RegistrationRequestRepository:
             RegistrationRequest: Solicitud encontrada o None
         """
         result = await session.execute(
-            select(RegistrationRequest).where(
+            select(RegistrationRequest)
+            .options(selectinload(RegistrationRequest.attachments))
+            .where(
                 and_(
                     RegistrationRequest.email == email.lower(),
                     RegistrationRequest.status == RegistrationStatus.PENDING
@@ -366,12 +454,13 @@ class RegistrationRequestRepository:
             RegistrationRequest: Solicitud actualizada o None si no se encontró
         """
         result = await session.execute(
-            select(RegistrationRequest).where(RegistrationRequest.id == request_id)
+            select(RegistrationRequest)
+            .options(selectinload(RegistrationRequest.attachments))
+            .where(RegistrationRequest.id == request_id)
         )
         request = result.scalar_one_or_none()
 
         if request:
-            from src.database.timezone_utils import now_chile
             request.status = RegistrationStatus.APPROVED
             request.decided_by = decided_by
             request.decided_at = now_chile()
@@ -400,12 +489,13 @@ class RegistrationRequestRepository:
             RegistrationRequest: Solicitud actualizada o None si no se encontró
         """
         result = await session.execute(
-            select(RegistrationRequest).where(RegistrationRequest.id == request_id)
+            select(RegistrationRequest)
+            .options(selectinload(RegistrationRequest.attachments))
+            .where(RegistrationRequest.id == request_id)
         )
         request = result.scalar_one_or_none()
 
         if request:
-            from src.database.timezone_utils import now_chile
             request.status = RegistrationStatus.REJECTED
             request.decided_by = decided_by
             request.decided_at = now_chile()
