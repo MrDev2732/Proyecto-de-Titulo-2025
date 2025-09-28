@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
+from uuid import UUID as PyUUID
 
 from sqlalchemy import (
     Column,
@@ -16,12 +17,12 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import BaseModel
+from src.database.models.base import BaseModel, SoftDeleteBaseModel
 from src.database.enums import NotificationStatus
-from src.database.timezone_utils import now_chile
+from src.database.utils import now_chile
 
 
-class Tenant(BaseModel):
+class Tenant(SoftDeleteBaseModel):
     """Tenant model for multi-tenancy support."""
 
     __tablename__ = 'tenants'
@@ -31,6 +32,11 @@ class Tenant(BaseModel):
         Text, 
         nullable=False,
         comment="Tenant name"
+    )
+    domain: Mapped[Optional[str]] = Column(
+        Text, 
+        nullable=True,
+        comment="Email domain for institutional emails (e.g., 'recoleta.cl')"
     )
 
     # Only include created_at (inherited from BaseModel),
@@ -45,7 +51,22 @@ class Tenant(BaseModel):
 
 
 class Outbox(BaseModel):
-    """Transactional outbox model for notifications."""
+    """
+    Transactional outbox model for notifications.
+
+    IMPORTANT: This table can grow rapidly. Implement cleanup processes:
+
+    1. TTL Cleanup (recommended):
+       DELETE FROM outbox 
+       WHERE status = 'processed' 
+       AND processed_at < now() - interval '30 days';
+
+    2. Archival Strategy:
+       Move old processed records to outbox_archive table
+
+    3. Partitioning (for high volume):
+       Partition by created_at (monthly/weekly)
+    """
 
     __tablename__ = 'outbox'
 
@@ -59,6 +80,13 @@ class Outbox(BaseModel):
         nullable=False, 
         comment="Message data"
     )
+    status: Mapped[str] = Column(
+        Text, 
+        nullable=False, 
+        default='pending',
+        server_default='pending',
+        comment="Processing status: pending, processing, processed, failed"
+    )
     attempts: Mapped[int] = Column(
         Integer, 
         nullable=False, 
@@ -66,10 +94,22 @@ class Outbox(BaseModel):
         server_default='0',
         comment="Number of delivery attempts"
     )
+    max_attempts: Mapped[int] = Column(
+        Integer, 
+        nullable=False, 
+        default=3,
+        server_default='3',
+        comment="Maximum delivery attempts before marking as failed"
+    )
     next_attempt_at: Mapped[Optional[datetime]] = Column(
         DateTime(timezone=True), 
         nullable=True,
         comment="Next delivery attempt timestamp"
+    )
+    processed_at: Mapped[Optional[datetime]] = Column(
+        DateTime(timezone=True), 
+        nullable=True,
+        comment="Timestamp when successfully processed"
     )
     last_error: Mapped[Optional[str]] = Column(
         Text, 
@@ -81,18 +121,65 @@ class Outbox(BaseModel):
     __table_args__ = (
         CheckConstraint("jsonb_typeof(payload) = 'object'", name='ck_outbox_payload_object'),
         CheckConstraint("payload ? 'to'", name='ck_outbox_payload_has_to'),
-        Index('idx_outbox_pull', 'next_attempt_at', 'type'),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'processed', 'failed')",
+            name='ck_outbox_status'
+        ),
+        CheckConstraint("attempts <= max_attempts", name='ck_outbox_attempts_limit'),
+        # Index for worker polling (critical for performance)
+        Index('idx_outbox_pending', 'status', 'next_attempt_at', 
+              postgresql_where="status IN ('pending', 'failed')"),
+        # Index for cleanup operations (TTL)
+        Index('idx_outbox_cleanup', 'status', 'processed_at',
+              postgresql_where="status = 'processed'"),
+        # Index for monitoring and debugging
+        Index('idx_outbox_type_status', 'type', 'status', 'created_at'),
         {'schema': SCHEMA}
     )
 
+    def is_pending(self) -> bool:
+        """Check if the message is pending processing."""
+        return self.status == 'pending'
+
+    def is_processed(self) -> bool:
+        """Check if the message was successfully processed."""
+        return self.status == 'processed'
+
+    def is_failed(self) -> bool:
+        """Check if the message failed after max attempts."""
+        return self.status == 'failed'
+
+    def can_retry(self) -> bool:
+        """Check if the message can be retried."""
+        return self.attempts < self.max_attempts and self.status in ('pending', 'failed')
+
+    def mark_processed(self) -> None:
+        """Mark the message as successfully processed."""
+        self.status = 'processed'
+        self.processed_at = now_chile()
+
+    def mark_failed(self, error_message: str) -> None:
+        """Mark the message as failed with error details."""
+        self.status = 'failed'
+        self.last_error = error_message
+        self.attempts += 1
+
     def __repr__(self) -> str:
-        return f"Outbox(id={self.id}, type={self.type}, attempts={self.attempts})"
+        return f"Outbox(id={self.id}, type={self.type}, status={self.status}, attempts={self.attempts})"
 
 
 class NotificationLog(BaseModel):
     """Notification delivery log model."""
 
     __tablename__ = 'notification_logs'
+
+    # Trazabilidad con outbox
+    outbox_id: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.outbox.id', ondelete='SET NULL'), 
+        nullable=True,
+        comment="Outbox event that originated this notification"
+    )
 
     type: Mapped[str] = Column(
         Text, 
@@ -116,8 +203,13 @@ class NotificationLog(BaseModel):
             f"status IN ('{NotificationStatus.SENT}', '{NotificationStatus.FAILED}')",
             name='ck_notification_log_status'
         ),
+        Index('idx_notification_log_outbox', 'outbox_id'),
+        Index('idx_notification_log_destination_created', 'destination', 'created_at'),
         {'schema': SCHEMA}
     )
+
+    # Relationships
+    outbox: Mapped[Optional["Outbox"]] = relationship("Outbox", foreign_keys=[outbox_id])
 
     def __repr__(self) -> str:
         return f"NotificationLog(id={self.id}, type={self.type}, destination={self.destination}, status={self.status})"
@@ -129,7 +221,7 @@ class AuditLog(BaseModel):
     __tablename__ = 'audit_logs'
 
     # Actor who performed the action
-    actor_id: Mapped[Optional[UUID]] = Column(
+    actor_id: Mapped[Optional[PyUUID]] = Column(
         UUID(as_uuid=True), 
         ForeignKey(f'{SCHEMA}.users.id', ondelete='SET NULL'), 
         nullable=True,
@@ -147,7 +239,7 @@ class AuditLog(BaseModel):
         nullable=False, 
         comment="Type of entity affected"
     )
-    entity_id: Mapped[UUID] = Column(
+    entity_id: Mapped[PyUUID] = Column(
         UUID(as_uuid=True), 
         nullable=False, 
         comment="ID of the affected entity"
