@@ -1,0 +1,500 @@
+// Estilos específicos del dashboard administrativo minimalista
+.dashboard-container {
+  min-height: 100vh;
+  background-color: #fafafa;
+}
+
+// Navegación de tabs minimalista
+.nav-tabs {
+  .nav-tab {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+
+    &.active {
+      background-color: #f3f4f6;
+      color: #111827;
+    }
+
+    &:not(.active) {
+      color: #6b7280;
+      
+      &:hover {
+        color: #111827;
+        background-color: #f9fafb;
+      }
+    }
+  }
+}
+
+// Módulos del dashboard con diseño limpio
+.module-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (min-width: 1024px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.module-card {
+  background-color: white;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(229, 231, 235, 0.6);
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  .module-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .module-icon {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    background-color: #f3f4f6;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .module-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background-color: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+  }
+
+  .module-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+
+    &.active {
+      background-color: #f0fdf4;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+
+    &.coming-soon {
+      background-color: #fffbeb;
+      color: #a16207;
+      border: 1px solid #fed7aa;
+    }
+
+    &.disabled {
+      background-color: #f9fafb;
+      color: #374151;
+      border: 1px solid #e5e7eb;
+    }
+  }
+
+  .module-button {
+    width: 100%;
+    display: inline-flex;
+    justify-content: center;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    transition: colors 0.2s;
+    outline: none;
+
+    &:focus {
+      outline: 2px solid transparent;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.05);
+    }
+
+    &.active {
+      background-color: #111827;
+      color: white;
+
+      &:hover {
+        background-color: #1f2937;
+      }
+
+      &:focus {
+        box-shadow: 0 0 0 2px #6b7280;
+      }
+    }
+
+    &.coming-soon {
+      background-color: #e5e7eb;
+      color: #374151;
+
+      &:hover {
+        background-color: #d1d5db;
+      }
+
+      &:focus {
+        box-shadow: 0 0 0 2px #9ca3af;
+      }
+    }
+
+    &.disabled {
+      background-color: #f3f4f6;
+      color: #9ca3af;
+      cursor: not-allowed;
+    }
+  }
+}
+
+// Acciones rápidas minimalistas
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (min-width: 1024px) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.quick-action-card {
+  position: relative;
+  padding: 1rem;
+  text-align: left;
+  background-color: white;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(229, 231, 235, 0.6);
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  .action-icon {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.5rem;
+    background-color: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
+    transition: colors 0.2s;
+  }
+
+  &:hover .action-icon {
+    background-color: #e5e7eb;
+  }
+
+  .action-content {
+    margin-left: 0.75rem;
+
+    .action-title {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #111827;
+    }
+
+    .action-description {
+      font-size: 0.75rem;
+      color: #6b7280;
+      margin-top: 0.125rem;
+    }
+  }
+}
+
+// Logo personalizado
+.logo-container {
+  @apply w-14 h-14 bg-white rounded-xl flex items-center justify-center shadow-md border border-gray-200;
+  
+  img {
+    @apply w-10 h-10 object-contain;
+  }
+
+  svg {
+    @apply w-8 h-8 text-green-500;
+  }
+}
+
+// Mejoras de responsividad para móviles
+@media (max-width: 640px) {
+  .module-grid {
+    @apply grid-cols-1 gap-4;
+  }
+
+  .quick-actions-grid {
+    @apply grid-cols-1 gap-3;
+  }
+
+  // Cards más compactas en móvil
+  .module-card {
+    .module-header {
+      @apply flex-col items-start space-y-3;
+    }
+
+    .module-icon {
+      @apply w-10 h-10;
+    }
+  }
+
+  .quick-action-card {
+    @apply p-4;
+    
+    .action-icon {
+      @apply w-10 h-10;
+    }
+  }
+}
+
+// Header responsivo
+.header-nav {
+  @media (max-width: 768px) {
+    @apply hidden;
+  }
+}
+
+// Tabla responsiva mejorada
+.responsive-table {
+  @media (max-width: 640px) {
+    @apply hidden;
+  }
+}
+
+.mobile-cards {
+  @media (min-width: 641px) {
+    @apply hidden;
+  }
+}
+
+// Animaciones personalizadas
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Hover effects para las tarjetas de estadísticas
+.stats-card {
+  @apply bg-white overflow-hidden shadow rounded-lg transition-shadow duration-200;
+
+  &:hover {
+    @apply shadow-lg;
+  }
+}
+
+// Estilo personalizado para la tabla
+.requests-table {
+  tr {
+    @apply transition-colors duration-150;
+
+    &:hover {
+      @apply bg-gray-50;
+    }
+  }
+
+  th {
+    @apply bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+  }
+
+  td {
+    @apply px-6 py-4 whitespace-nowrap;
+  }
+}
+
+// Indicadores de estado
+.status-badge {
+  @apply inline-flex px-2 py-1 text-xs font-semibold rounded-full;
+
+  &.pending {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+
+  &.approved {
+    @apply bg-green-100 text-green-800;
+  }
+
+  &.rejected {
+    @apply bg-red-100 text-red-800;
+  }
+}
+
+// Botones de acción
+.action-button {
+  @apply inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md transition-colors duration-200;
+
+  &.approve {
+    @apply text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500;
+  }
+
+  &.reject {
+    @apply text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500;
+  }
+
+  &:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+}
+
+// Loading spinner personalizado
+.loading-spinner {
+  @apply animate-spin rounded-full border-b-2 border-blue-600;
+
+  &.small {
+    @apply h-4 w-4;
+  }
+
+  &.medium {
+    @apply h-8 w-8;
+  }
+
+  &.large {
+    @apply h-12 w-12;
+  }
+}
+
+// Error message styling
+.error-message {
+  @apply bg-red-50 border border-red-200 rounded-md p-4;
+
+  .error-icon {
+    @apply h-5 w-5 text-red-400;
+  }
+
+  .error-text {
+    @apply text-sm text-red-800;
+  }
+
+  .close-button {
+    @apply ml-auto -mx-1.5 -my-1.5 bg-red-50 text-red-500 rounded-lg focus:ring-2 focus:ring-red-600 p-1.5 hover:bg-red-100 inline-flex h-8 w-8;
+  }
+}
+
+// Search input styling
+.search-input {
+  @apply block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500;
+
+  .search-icon {
+    @apply absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none;
+  }
+}
+
+// Header styling
+.dashboard-header {
+  @apply bg-white shadow-sm border-b border-gray-200;
+
+  .header-content {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .logo-container {
+    @apply w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center;
+  }
+
+  .user-info {
+    @apply flex items-center space-x-3;
+  }
+
+  .logout-button {
+    @apply inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors;
+  }
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+  .stats-grid {
+    @apply grid-cols-1 gap-4;
+  }
+
+  .header-content {
+    @apply flex-col space-y-4;
+  }
+
+  .filters-container {
+    @apply flex-col space-y-3;
+  }
+
+  .action-buttons {
+    @apply flex-col space-y-2;
+  }
+}
+
+// Dark mode support (preparado para futura implementación)
+@media (prefers-color-scheme: dark) {
+  .dashboard-container {
+    background-color: #111827;
+  }
+
+  .stats-card {
+    @apply bg-gray-800 text-white;
+  }
+
+  .requests-table {
+    th {
+      @apply bg-gray-800 text-gray-300;
+    }
+
+    td {
+      @apply text-gray-200;
+    }
+    
+    tr:hover {
+      @apply bg-gray-700;
+    }
+  }
+}
+
+// Accessibility improvements
+.focus-visible {
+  @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+}
+
+// Print styles
+@media print {
+  .dashboard-header,
+  .action-button,
+  .logout-button {
+    display: none !important;
+  }
+
+  .dashboard-container {
+    background: white !important;
+  }
+
+  .stats-card,
+  .requests-table {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+  }
+}
