@@ -3,7 +3,7 @@ from typing import TypeVar
 import asyncio
 import contextlib
 
-from sqlalchemy import exc, text
+from sqlalchemy import exc
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -53,7 +53,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     except RuntimeError:
         logger.critical("Intentando obtener sesión de base de datos fuera de un contexto asyncio")
         raise RuntimeError("get_db_session debe ser llamado desde un contexto asyncio")
-    
+
     # Crear sesión directamente sin contextvars
     session = async_session_factory()
     try:
@@ -78,7 +78,7 @@ async def get_transaction_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Gestor de contexto que proporciona una sesión de base de datos dentro de un bloque
     y maneja automáticamente commit/rollback.
-    
+
     Ejemplo:
         async with get_transaction_session() as session:
             # hacer operaciones con la sesión
