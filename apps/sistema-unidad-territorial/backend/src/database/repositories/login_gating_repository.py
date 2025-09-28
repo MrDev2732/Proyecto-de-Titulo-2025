@@ -16,8 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.logging import get_logger   
 from src.database.models import (
     User,
+    UserEmail,
     Role,
-    RoleAssignment,
+    SystemRoleAssignment,
+    TenantRoleAssignment,
+    CommunityRoleAssignment,
     Community,
     ResidentMembership,
     RegistrationRequest,
@@ -50,9 +53,11 @@ class LoginGatingRepository:
         Returns:
             True if user is allowed to login, False otherwise
         """
-        # 1. Find user by email
+        # 1. Find user by email (join with user_emails)
         result = await session.execute(
-            select(User).where(User.email == email.lower())
+            select(User)
+            .join(UserEmail, User.id == UserEmail.user_id)
+            .where(UserEmail.email == email.lower())
         )
         user = result.scalar_one_or_none()
 
@@ -135,33 +140,32 @@ class LoginGatingRepository:
         Returns:
             True if user has access, False otherwise
         """
-        logger.info(f"Checking user access for user_id: {user_id}")
+        logger.debug(f"Checking user access for user_id: {user_id}")
 
-        # Check if user has GLOBAL roles (SUPERADMIN, SUPPORT)
+        # Check if user has SYSTEM roles (SUPERADMIN, SUPPORT)
         global_assignment = await session.execute(
-            select(RoleAssignment)
+            select(SystemRoleAssignment)
             .join(Role)
             .where(
                 and_(
-                    RoleAssignment.user_id == user_id,
-                    Role.scope == RoleScope.GLOBAL
+                    SystemRoleAssignment.user_id == user_id,
+                    Role.scope == RoleScope.SYSTEM
                 )
             )
         )
 
         global_role = global_assignment.first()
-        logger.info(f"Global role assignment found: {global_role is not None}")
         if global_role:
-            logger.info(f"User has GLOBAL access - allowing login")
+            logger.debug(f"User has GLOBAL access - allowing login")
             return True
 
         # Check if user is tenant admin
         admin_assignment = await session.execute(
-            select(RoleAssignment)
+            select(TenantRoleAssignment)
             .join(Role)
             .where(
                 and_(
-                    RoleAssignment.user_id == user_id,
+                    TenantRoleAssignment.user_id == user_id,
                     Role.scope == RoleScope.TENANT,
                     Role.name == "ADMIN"
                 )
@@ -169,9 +173,8 @@ class LoginGatingRepository:
         )
 
         admin_role = admin_assignment.scalar_one_or_none()
-        logger.info(f"Admin role assignment found: {admin_role is not None}")
         if admin_role:
-            logger.info(f"User has ADMIN access - allowing login")
+            logger.debug(f"User has ADMIN access - allowing login")
             return True
 
         # Check if user has approved membership in any community
@@ -185,13 +188,12 @@ class LoginGatingRepository:
         )
 
         membership_found = membership.scalar_one_or_none()
-        logger.info(f"Approved membership found: {membership_found is not None}")
 
         if membership_found:
-            logger.info(f"User has approved membership - allowing login")
+            logger.debug(f"User has approved membership - allowing login")
             return True
         else:
-            logger.info(f"User has no access - denying login")
+            logger.debug(f"User access denied")
             return False
 
     @staticmethod
@@ -243,12 +245,12 @@ class LoginGatingRepository:
             List of tenant dictionaries where user has admin role
         """
         result = await session.execute(
-            select(RoleAssignment, Role, Tenant)
-            .join(Role, RoleAssignment.role_id == Role.id)
-            .join(Tenant, RoleAssignment.tenant_id == Tenant.id)
+            select(TenantRoleAssignment, Role, Tenant)
+            .join(Role, TenantRoleAssignment.role_id == Role.id)
+            .join(Tenant, TenantRoleAssignment.tenant_id == Tenant.id)
             .where(
                 and_(
-                    RoleAssignment.user_id == user_id,
+                    TenantRoleAssignment.user_id == user_id,
                     Role.scope == RoleScope.TENANT
                 )
             )
@@ -279,12 +281,12 @@ class LoginGatingRepository:
             List of community dictionaries where user has moderator role
         """
         result = await session.execute(
-            select(RoleAssignment, Role, Community)
-            .join(Role, RoleAssignment.role_id == Role.id)
-            .join(Community, RoleAssignment.community_id == Community.id)
+            select(CommunityRoleAssignment, Role, Community)
+            .join(Role, CommunityRoleAssignment.role_id == Role.id)
+            .join(Community, CommunityRoleAssignment.community_id == Community.id)
             .where(
                 and_(
-                    RoleAssignment.user_id == user_id,
+                    CommunityRoleAssignment.user_id == user_id,
                     Role.scope == RoleScope.COMMUNITY
                 )
             )
@@ -322,13 +324,13 @@ class LoginGatingRepository:
             select(RegistrationRequest, Community)
             .join(Community, RegistrationRequest.community_id == Community.id)
             .join(
-                RoleAssignment, 
+                CommunityRoleAssignment, 
                 and_(
-                    RoleAssignment.community_id == Community.id,
-                    RoleAssignment.user_id == user_id
+                    CommunityRoleAssignment.community_id == Community.id,
+                    CommunityRoleAssignment.user_id == user_id
                 )
             )
-            .join(Role, RoleAssignment.role_id == Role.id)
+            .join(Role, CommunityRoleAssignment.role_id == Role.id)
             .where(
                 and_(
                     Role.name == "MODERATOR",
