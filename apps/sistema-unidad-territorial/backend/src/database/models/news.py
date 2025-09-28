@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped
 
 from src.database import SCHEMA
 from src.database.models.base import TenantBaseModel
-from src.database.timezone_utils import now_chile
+from src.database.utils import now_chile
 
 
 class News(TenantBaseModel):
@@ -44,14 +44,12 @@ class News(TenantBaseModel):
             'visible_until IS NULL OR visible_until > visible_from',
             name='ck_news_valid_dates'
         ),
-        # Partial index for active news (equivalent to SQL index)
-        Index(
-            'idx_news_active',
-            'visible_from',
-            postgresql_where=(
-                "NOW() BETWEEN visible_from AND COALESCE(visible_until, 'infinity'::timestamptz)"
-            )
-        ),
+        # Composite index for visibility queries - optimizes range queries
+        Index('idx_news_visibility', 'visible_from', 'visible_until'),
+        # Index for tenant-specific active news queries
+        Index('idx_news_tenant_active', 'tenant_id', 'visible_from', 'visible_until'),
+        # Index for ordering by creation date
+        Index('idx_news_created', 'created_at'),
         {'schema': SCHEMA}
     )
 
