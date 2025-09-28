@@ -13,8 +13,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database.models import User, UserOauthIdentity, UserSession, RoleAssignment
-from src.database.enums import UserStatus
+from src.database import (
+    User, 
+    UserEmail,
+    UserOauthIdentity, 
+    UserSession, 
+    SystemRoleAssignment,
+    TenantRoleAssignment,
+    CommunityRoleAssignment,
+    UserStatus,
+)
 from src.core.logging import get_logger
 
 
@@ -36,10 +44,18 @@ class AuthRepository:
         Returns:
             User: Usuario encontrado o None
         """
+        # Buscar por email en la tabla user_emails y hacer join con users
         result = await session.execute(
             select(User)
-            .options(selectinload(User.role_assignments).selectinload(RoleAssignment.role))
-            .where(User.email == email.lower())
+            .join(UserEmail, User.id == UserEmail.user_id)
+            .options(
+                selectinload(User.primary_email),
+                selectinload(User.emails),
+                selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
+                selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
+                selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
+            )
+            .where(UserEmail.email == email.lower())
         )
         return result.scalar_one_or_none()
 
@@ -57,7 +73,13 @@ class AuthRepository:
         """
         result = await session.execute(
             select(User)
-            .options(selectinload(User.role_assignments).selectinload(RoleAssignment.role))
+            .options(
+                selectinload(User.primary_email),
+                selectinload(User.emails),
+                selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
+                selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
+                selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
+            )
             .where(User.id == user_id)
         )
         return result.scalar_one_or_none()
@@ -68,10 +90,13 @@ class AuthRepository:
         email: str,
         password_hash: Optional[str] = None,
         status: UserStatus = UserStatus.ACTIVE,
-        email_verified_at: Optional[datetime] = None
+        email_verified_at: Optional[datetime] = None,
+        full_name: Optional[str] = None,
+        rut: Optional[str] = None,
+        address: Optional[str] = None
     ) -> User:
         """
-        Crear nuevo usuario.
+        Crear nuevo usuario con el nuevo modelo User/UserEmail.
 
         Args:
             session: Sesión de base de datos
@@ -79,19 +104,42 @@ class AuthRepository:
             password_hash: Hash de contraseña (opcional para OAuth)
             status: Estado del usuario
             email_verified_at: Fecha de verificación del email
+            full_name: Nombre completo del usuario
+            rut: RUT chileno del usuario
+            address: Dirección del usuario
 
         Returns:
-            User: Usuario creado
+            User: Usuario creado con su email primario
         """
+        # 1. Crear el usuario con información personal
         user = User(
-            email=email.lower(),
             password_hash=password_hash,
             status=status,
-            email_verified_at=email_verified_at
+            full_name=full_name,
+            rut=rut,
+            address=address
         )
-
         session.add(user)
-        await session.flush()  # Para obtener el ID
+        await session.flush()  # Para obtener el ID del usuario
+
+        # 2. Crear el email del usuario
+        user_email = UserEmail(
+            user_id=user.id,
+            email=email.lower(),
+            verified_at=email_verified_at,
+            is_primary=True,
+            email_type='personal'
+        )
+        session.add(user_email)
+        await session.flush()  # Para obtener el ID del email
+
+        # 3. Asignar el email como primario en el usuario
+        user.primary_email_id = user_email.id
+        await session.flush()
+
+        # 4. Recargar el usuario con sus relaciones
+        await session.refresh(user, ['primary_email', 'emails'])
+
         return user
 
 
@@ -151,8 +199,11 @@ class OAuthRepository:
         result = await session.execute(
             select(UserOauthIdentity)
             .options(
-                selectinload(UserOauthIdentity.user)
-                .selectinload(User.role_assignments).selectinload(RoleAssignment.role)
+                selectinload(UserOauthIdentity.user).selectinload(User.primary_email),
+                selectinload(UserOauthIdentity.user).selectinload(User.emails),
+                selectinload(UserOauthIdentity.user).selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
+                selectinload(UserOauthIdentity.user).selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
+                selectinload(UserOauthIdentity.user).selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
             )
             .where(
                 UserOauthIdentity.provider == provider,
@@ -289,7 +340,13 @@ class SessionRepository:
         """
         result = await session.execute(
             select(UserSession)
-            .options(selectinload(UserSession.user).selectinload(User.role_assignments).selectinload("role"))
+            .options(
+                selectinload(UserSession.user).selectinload(User.primary_email),
+                selectinload(UserSession.user).selectinload(User.emails),
+                selectinload(UserSession.user).selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
+                selectinload(UserSession.user).selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
+                selectinload(UserSession.user).selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
+            )
             .where(
                 UserSession.access_token_hash == access_token_hash,
                 UserSession.is_active == True
@@ -314,7 +371,13 @@ class SessionRepository:
         """
         result = await session.execute(
             select(UserSession)
-            .options(selectinload(UserSession.user).selectinload(User.role_assignments).selectinload("role"))
+            .options(
+                selectinload(UserSession.user).selectinload(User.primary_email),
+                selectinload(UserSession.user).selectinload(User.emails),
+                selectinload(UserSession.user).selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
+                selectinload(UserSession.user).selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
+                selectinload(UserSession.user).selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
+            )
             .where(
                 UserSession.refresh_token_hash == refresh_token_hash,
                 UserSession.is_active == True
