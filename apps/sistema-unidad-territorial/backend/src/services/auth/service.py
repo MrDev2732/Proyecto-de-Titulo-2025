@@ -5,28 +5,24 @@ Contiene la lógica de negocio relacionada con autenticación, autorización
 y gestión de usuarios.
 """
 
-from datetime import timedelta
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 
-import httpx
-from authlib.integrations.requests_client import OAuth2Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import User
 from src.database.enums import (
     UserStatus,
-    OAuthProvider,
     AuthProvider,
     AuthMethod,
     AuthResult,
     AuthFailureReason,
     RegistrationProvider,
 )
-from src.database.repositories.auth_repository import AuthRepository, OAuthRepository, SessionRepository
+from src.database.repositories.auth_repository import AuthRepository, SessionRepository
 from src.database.repositories.login_gating_repository import LoginGatingRepository
-from src.database.repositories.community_repository import RegistrationRequestRepository, ResidentMembershipRepository
-from src.services.auth_log_service import create_auth_log_service
+from src.database.repositories.community_repository import RegistrationRequestRepository
+from src.services.auth.log_service import create_auth_log_service
 from src.core.security import (
     verify_password, 
     get_password_hash, 
@@ -41,7 +37,6 @@ from src.schemas.auth_schemas import (
     RoleResponse
 )
 from src.core.config import settings
-from src.database.timezone_utils import now_chile
 from src.core.logging import get_logger
 
 
@@ -50,6 +45,72 @@ logger = get_logger(__name__)
 
 class AuthService:
     """Servicio principal de autenticación."""
+
+    @staticmethod
+    def _get_all_user_role_names(user: User) -> List[str]:
+        """
+        Obtener todos los nombres de roles de un usuario de todas las asignaciones.
+
+        Args:
+            user: Usuario del cual obtener los roles
+
+        Returns:
+            List[str]: Lista de nombres de roles únicos
+        """
+        role_names = []
+        # Agregar roles de sistema
+        role_names.extend([assignment.role.name for assignment in user.system_role_assignments])
+        # Agregar roles de tenant
+        role_names.extend([assignment.role.name for assignment in user.tenant_role_assignments])
+        # Agregar roles de comunidad
+        role_names.extend([assignment.role.name for assignment in user.community_role_assignments])
+
+        return list(set(role_names))
+
+    @staticmethod
+    def _get_all_user_role_responses(user: User) -> List[RoleResponse]:
+        """
+        Obtener todas las respuestas de roles de un usuario de todas las asignaciones.
+
+        Args:
+            user: Usuario del cual obtener los roles
+
+        Returns:
+            List[RoleResponse]: Lista de respuestas de roles únicos
+        """
+        unique_roles = {}
+
+        # Procesar roles de sistema
+        for assignment in user.system_role_assignments:
+            role_id = assignment.role.id
+            if role_id not in unique_roles:
+                unique_roles[role_id] = RoleResponse(
+                    id=assignment.role.id,
+                    name=assignment.role.name,
+                    created_at=assignment.role.created_at
+                )
+
+        # Procesar roles de tenant
+        for assignment in user.tenant_role_assignments:
+            role_id = assignment.role.id
+            if role_id not in unique_roles:
+                unique_roles[role_id] = RoleResponse(
+                    id=assignment.role.id,
+                    name=assignment.role.name,
+                    created_at=assignment.role.created_at
+                )
+
+        # Procesar roles de comunidad
+        for assignment in user.community_role_assignments:
+            role_id = assignment.role.id
+            if role_id not in unique_roles:
+                unique_roles[role_id] = RoleResponse(
+                    id=assignment.role.id,
+                    name=assignment.role.name,
+                    created_at=assignment.role.created_at
+                )
+
+        return list(unique_roles.values())
 
     @staticmethod
     async def authenticate_user(
@@ -234,9 +295,9 @@ class AuthService:
         if not user or user.status != UserStatus.ACTIVE:
             return None
 
-        # Crear nuevos tokens
-        role_names = [assignment.role.name for assignment in user.role_assignments]
-        tokens = create_user_tokens(user.id, user.email, role_names)
+        # Crear nuevos tokens (deduplicar roles por nombre de todas las asignaciones)
+        unique_role_names = AuthService._get_all_user_role_names(user)
+        tokens = create_user_tokens(user.id, user.email, unique_role_names)
 
         return tokens
 
@@ -251,19 +312,13 @@ class AuthService:
         Returns:
             UserResponse: Schema de respuesta
         """
-        role_responses = [
-            RoleResponse(
-                id=assignment.role.id,
-                name=assignment.role.name,
-                created_at=assignment.role.created_at
-            )
-            for assignment in user.role_assignments
-        ]
+        # Deduplicar roles por ID para evitar duplicados de todas las asignaciones
+        role_responses = AuthService._get_all_user_role_responses(user)
 
         return UserResponse(
             id=user.id,
             email=user.email,
-            email_verified_at=user.email_verified_at,
+            email_verified_at=user.primary_email.verified_at if user.primary_email else None,
             status=user.status,
             roles=role_responses,
             created_at=user.created_at,
@@ -301,12 +356,12 @@ class AuthService:
         """
         auth_log_service = create_auth_log_service(session)
 
-        # Crear tokens con metadatos de sesión
-        role_names = [assignment.role.name for assignment in user.role_assignments]
+        # Crear tokens con metadatos de sesión (deduplicar roles por nombre de todas las asignaciones)
+        unique_role_names = AuthService._get_all_user_role_names(user)
         token_data = create_user_tokens_with_session(
             user.id, 
             user.email, 
-            role_names,
+            unique_role_names,
             ip_address=ip_address,
             user_agent=user_agent
         )
@@ -483,7 +538,7 @@ class AuthService:
             )
 
             if existing_request:
-                logger.info(f"Registration request already exists for OAuth user: {oauth_info.email}")
+                logger.debug(f"Registration request already exists for OAuth user")
                 return
 
             # Obtener tenant y comunidad por defecto
@@ -509,278 +564,7 @@ class AuthService:
                 full_name=None  # Se puede extraer del OAuth info si está disponible
             )
 
-            logger.info(f"Created auto registration request for OAuth user: {oauth_info.email}")
+            logger.debug(f"Created auto registration request for OAuth user")
 
         except Exception as e:
             logger.error(f"Error creating OAuth registration request: {e}", exc_info=True)
-
-
-class GoogleOAuthService:
-    """Servicio para autenticación OAuth con Google."""
-
-    @staticmethod
-    def get_authorization_url(state: str) -> str:
-        """
-        Generar URL de autorización de Google.
-
-        Args:
-            state: Estado para validación CSRF
-
-        Returns:
-            str: URL de autorización
-        """
-        oauth = OAuth2Session(
-            client_id=settings.google_oauth.client_id,
-            redirect_uri=settings.google_oauth.redirect_uri,
-            scope=settings.google_oauth.scope
-        )
-
-        authorization_url, _ = oauth.create_authorization_url(
-            'https://accounts.google.com/o/oauth2/auth',
-            state=state
-        )
-
-        return authorization_url
-
-    @staticmethod
-    async def exchange_code_for_user_info(code: str) -> Optional[OAuthUserInfo]:
-        """
-        Intercambiar código de autorización por información del usuario.
-
-        Args:
-            code: Código de autorización de Google
-
-        Returns:
-            OAuthUserInfo: Información del usuario o None si hay error
-        """
-        try:
-            # Intercambiar código por tokens
-            async with httpx.AsyncClient() as client:
-                token_response = await client.post(
-                    'https://oauth2.googleapis.com/token',
-                    data={
-                        'client_id': settings.google_oauth.client_id,
-                        'client_secret': settings.google_oauth.client_secret,
-                        'code': code,
-                        'grant_type': 'authorization_code',
-                        'redirect_uri': settings.google_oauth.redirect_uri,
-                    }
-                )
-
-                if token_response.status_code != 200:
-                    logger.error(f"Error en OAuth token exchange: {token_response.text}")
-                    return None
-
-                token_data = token_response.json()
-                access_token = token_data.get('access_token')
-                refresh_token = token_data.get('refresh_token')
-                expires_in = token_data.get('expires_in')
-
-                if not access_token:
-                    return None
-
-                # Obtener información del usuario
-                user_response = await client.get(
-                    'https://www.googleapis.com/oauth2/v2/userinfo',
-                    headers={'Authorization': f'Bearer {access_token}'}
-                )
-
-                if user_response.status_code != 200:
-                    logger.error(f"Error obteniendo info de usuario: {user_response.text}")
-                    return None
-
-                user_data = user_response.json()
-
-                # Calcular fecha de expiración
-                token_expires_at = None
-                if expires_in:
-                    token_expires_at = now_chile() + timedelta(seconds=expires_in)
-
-                return OAuthUserInfo(
-                    provider_user_id=user_data['id'],
-                    email=user_data['email'],
-                    provider=OAuthProvider.GOOGLE,
-                    access_token=access_token,
-                    refresh_token=refresh_token,
-                    token_expires_at=token_expires_at
-                )
-
-        except Exception as e:
-            logger.error(f"Error en OAuth: {e}", exc_info=True)
-            return None
-
-    @staticmethod
-    async def authenticate_or_create_oauth_user(
-        session: AsyncSession,
-        oauth_info: OAuthUserInfo,
-        ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        geo_country: Optional[str] = None
-    ) -> Optional[tuple[User, UUID]]:
-        """
-        Autenticar usuario OAuth con gated access control.
-
-        Args:
-            session: Sesión de base de datos
-            oauth_info: Información del usuario OAuth
-            ip: Dirección IP del cliente
-            user_agent: User agent del navegador
-            geo_country: Código de país
-
-        Returns:
-            tuple[User, UUID]: Usuario autenticado y el ID del log, o None si no puede hacer login
-        """
-        logger.info(f"🔍 Starting OAuth authentication for: {oauth_info.email}")
-        auth_log_service = create_auth_log_service(session)
-        user = None
-        failure_reason = None
-
-        try:
-            # Verificar seguridad pre-autenticación para OAuth (solo si tenemos IP)
-            if ip and settings.environment != "DEVELOPMENT":
-                security_check = await auth_log_service.check_pre_auth_security(
-                    ip=ip,
-                    email=oauth_info.email,
-                    user_agent=user_agent,
-                    geo_country=geo_country
-                )
-
-                if security_check['block_request'] and security_check['metrics']['risk_score'] > 95:
-                    await auth_log_service.log_authentication_attempt(
-                        email=oauth_info.email,
-                        provider=AuthProvider.GOOGLE,
-                        method=AuthMethod.OAUTH,
-                        result=AuthResult.FAIL,
-                        failure_reason=AuthFailureReason.RATE_LIMITED,
-                        ip=ip,
-                        user_agent=user_agent,
-                        geo_country=geo_country
-                    )
-                    return None
-
-            # Verificar si el usuario puede hacer login OAuth (gated authentication)
-            logger.info(f"Checking OAuth login for: {oauth_info.email}, provider: {oauth_info.provider}, provider_user_id: {oauth_info.provider_user_id}")
-            can_login = await LoginGatingRepository.can_user_login_by_oauth(
-                session, 
-                oauth_info.provider, 
-                oauth_info.provider_user_id
-            )
-            logger.info(f"OAuth login check result: {can_login}")
-
-            if not can_login:
-                # Verificar si el usuario existe por email (para usuarios existentes sin OAuth)
-                existing_user = await AuthRepository.find_user_by_email(session, oauth_info.email)
-
-                logger.info(f"User exists check for {oauth_info.email}: existing_user={existing_user is not None}, status={existing_user.status if existing_user else 'None'}")
-
-                if existing_user and existing_user.status == UserStatus.ACTIVE:
-                    # Usuario existe pero no tiene identidad OAuth - crear la identidad OAuth
-                    logger.info(f"Creating OAuth identity for existing user: {oauth_info.email}")
-
-                    oauth_identity = await OAuthRepository.create_oauth_identity(
-                        session,
-                        user_id=existing_user.id,
-                        provider=oauth_info.provider,
-                        provider_user_id=oauth_info.provider_user_id,
-                        provider_email=oauth_info.email,
-                        access_token=oauth_info.access_token,
-                        refresh_token=oauth_info.refresh_token,
-                        token_expires_at=oauth_info.token_expires_at
-                    )
-                    logger.info(f"OAuth identity created successfully for user {existing_user.id}")
-
-                    # Ahora verificar si puede hacer login con la nueva identidad OAuth
-                    can_login_now = await LoginGatingRepository.can_user_login_by_oauth(
-                        session, 
-                        oauth_info.provider, 
-                        oauth_info.provider_user_id
-                    )
-
-                    if can_login_now:
-                        # Proceder con la autenticación exitosa
-                        user = existing_user
-                    else:
-                        failure_reason = AuthFailureReason.ACCOUNT_SUSPENDED
-                        raise Exception("User access check failed after OAuth identity creation")
-                else:
-                    # Usuario no existe o no está activo - crear solicitud de registro automática
-                    await AuthService._create_oauth_registration_request(
-                        session, oauth_info, ip, user_agent, geo_country
-                    )
-                    failure_reason = AuthFailureReason.ACCOUNT_SUSPENDED  # Usuario no registrado/aprobado
-
-                    # Log failed attempt
-                    await auth_log_service.log_authentication_attempt(
-                        email=oauth_info.email,
-                        provider=AuthProvider.GOOGLE,
-                        method=AuthMethod.OAUTH,
-                        result=AuthResult.FAIL,
-                        failure_reason=failure_reason,
-                        ip=ip,
-                        user_agent=user_agent,
-                        geo_country=geo_country
-                    )
-                    return None
-            else:
-                # Usuario puede hacer login - buscar identidad OAuth existente
-                oauth_identity = await OAuthRepository.find_oauth_identity(
-                    session,
-                    oauth_info.provider,
-                    oauth_info.provider_user_id
-                )
-
-                if oauth_identity:
-                    user = oauth_identity.user
-                else:
-                    logger.error(f"OAuth identity not found after login gate check: {oauth_info.provider}:{oauth_info.provider_user_id}")
-                    failure_reason = AuthFailureReason.OAUTH_ERROR
-                    raise Exception("OAuth identity not found after login gate verification")
-
-            # Actualizar tokens OAuth si el usuario ya tenía una identidad
-            if 'oauth_identity' in locals():
-                # Usuario tenía identidad OAuth existente o acabamos de crear una nueva
-                await OAuthRepository.update_oauth_tokens(
-                    session,
-                    oauth_identity,
-                    access_token=oauth_info.access_token,
-                    refresh_token=oauth_info.refresh_token,
-                    token_expires_at=oauth_info.token_expires_at,
-                    provider_email=oauth_info.email
-                )
-                if 'user' not in locals():
-                    user = oauth_identity.user
-
-            # Registrar autenticación OAuth exitosa
-            auth_log_result = await auth_log_service.log_authentication_attempt(
-                email=oauth_info.email,
-                provider=AuthProvider.GOOGLE,
-                method=AuthMethod.OAUTH,
-                result=AuthResult.SUCCESS,
-                user=user,
-                ip=ip,
-                user_agent=user_agent,
-                geo_country=geo_country,
-                tenant_id=getattr(user, 'tenant_id', None)
-            )
-
-            await session.commit()
-            await session.refresh(user)
-
-            auth_log_id = UUID(auth_log_result['auth_log_id'])
-            return user, auth_log_id
-
-        except Exception as e:
-            logger.error(f"❌ Exception in OAuth authentication for {oauth_info.email}: {e}", exc_info=True)
-            # Registrar fallo OAuth
-            await auth_log_service.log_authentication_attempt(
-                email=oauth_info.email,
-                provider=AuthProvider.GOOGLE,
-                method=AuthMethod.OAUTH,
-                result=AuthResult.FAIL,
-                failure_reason=failure_reason or AuthFailureReason.OAUTH_ERROR,
-                error_code=str(e),
-                ip=ip,
-                user_agent=user_agent,
-                geo_country=geo_country
-            )
-            return None
