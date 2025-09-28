@@ -19,7 +19,7 @@ from src.schemas.auth_schemas import (
     UserResponse,
     ErrorResponse
 )
-from src.services.auth_service import AuthService, GoogleOAuthService
+from src.services.auth import AuthService, GoogleOAuthService
 from src.core.security import verify_token
 from src.core.dependencies import get_current_active_user, require_admin
 from src.database import User
@@ -113,20 +113,11 @@ async def login(
     )
 
     if not auth_result:
-        # Check if it's a gating issue vs credentials issue
-        user_exists = await AuthRepository.find_user_by_email(session, login_data.email)
-        if user_exists and user_exists.password_hash:
-            # User exists with password, likely a gating/approval issue
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Su cuenta no está aprobada para acceder al sistema. Contacte a los moderadores de su comunidad."
-            )
-        else:
-            # Credentials issue or user doesn't exist
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email o contraseña incorrectos"
-            )
+        # Siempre devolver el mismo mensaje genérico para no revelar información del sistema
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email o contraseña incorrectos"
+        )
 
     user, auth_log_id = auth_result
 
@@ -358,7 +349,7 @@ async def google_oauth_callback(
     oauth_info = await GoogleOAuthService.exchange_code_for_user_info(code)
 
     if not oauth_info:
-        logger.info(f"❌ Failed to get OAuth info from Google")
+        logger.debug(f"Failed to get OAuth info from Google")
         if frontend_redirect:
             # Redirigir al frontend con error
             error_url = f"{frontend_redirect}?error=oauth_failed"
@@ -369,13 +360,13 @@ async def google_oauth_callback(
                 detail="Error al obtener información del usuario de Google"
             )
 
-    logger.info(f"✅ Got OAuth info: {oauth_info.email}, provider_user_id: {oauth_info.provider_user_id}")
+    logger.debug(f"Got OAuth info from Google")
 
     # Obtener información del cliente
     ip_address = get_client_ip(request)
     user_agent = request.headers.get("user-agent")
 
-    logger.info(f"🔍 About to authenticate OAuth user: {oauth_info.email}")
+    logger.debug(f"About to authenticate OAuth user")
     # Autenticar usuario (con gated access control)
     auth_result = await GoogleOAuthService.authenticate_or_create_oauth_user(
         session, 
@@ -383,17 +374,17 @@ async def google_oauth_callback(
         ip=ip_address,
         user_agent=user_agent
     )
-    logger.info(f"🔍 Authentication result: {auth_result is not None}")
+    logger.debug(f"Authentication completed")
 
     if not auth_result:
-        # Usuario no puede hacer login (no registrado/aprobado)
+        # Usuario no puede hacer login - mensaje genérico
         if frontend_redirect:
-            error_url = f"{frontend_redirect}?error=registration_required&message=Your+registration+request+has+been+submitted+for+approval"
+            error_url = f"{frontend_redirect}?error=auth_failed&message=Authentication+failed"
             return RedirectResponse(url=error_url, status_code=302)
         else:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Registration required. Your request has been submitted for approval by community moderators."
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Error de autenticación. Verifique sus credenciales."
             )
 
     user, auth_log_id = auth_result
@@ -508,47 +499,6 @@ async def logout(
         )
 
     return {"message": f"Sesión cerrada exitosamente para {current_user.email}"}
-
-
-# Endpoint para debug de sesiones
-@router.get(
-    "/debug/sessions",
-    summary="Debug de sesiones",
-    description="Endpoint para debug - verificar sesiones activas",
-    include_in_schema=False  # No mostrar en docs de producción
-)
-async def debug_sessions(
-    db_session: AsyncSession = Depends(get_db_session),
-    authorization: str = Header(None)
-) -> Dict:
-    """
-    Debug endpoint para verificar sesiones.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        return {"error": "No authorization header"}
-    
-    access_token = authorization.split(" ")[1]
-    
-    # Verificar JWT
-    token_data = verify_token(access_token)
-    
-    # Crear hash del token
-    from src.core.security import hash_token
-    token_hash = hash_token(access_token)
-    
-    # Buscar sesión en BD
-    from src.database.repositories.auth_repository import SessionRepository
-    user_session = await SessionRepository.find_session_by_access_token(db_session, token_hash)
-    
-    return {
-        "token_valid": token_data is not None,
-        "token_data": token_data.__dict__ if token_data else None,
-        "token_hash": token_hash[:16] + "...",  # Solo mostrar parte del hash
-        "session_found": user_session is not None,
-        "session_active": user_session.is_active if user_session else None,
-        "session_valid": user_session.is_valid() if user_session else None,
-        "session_expires_at": user_session.expires_at.isoformat() if user_session else None
-    }
 
 
 # Endpoint para validar token (útil para otros servicios)
