@@ -1,8 +1,8 @@
 """First Revision
 
-Revision ID: 20389ce258bd
+Revision ID: 39b6e161dc00
 Revises: 
-Create Date: 2025-08-25 02:06:16.276236
+Create Date: 2025-09-28 03:06:25.469221
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '20389ce258bd'
+revision: str = '39b6e161dc00'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -34,34 +34,28 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
-    op.create_table('notification_logs',
-    sa.Column('type', sa.Text(), nullable=False, comment='Notification type'),
-    sa.Column('destination', sa.Text(), nullable=False, comment='Destination (email, phone, etc.)'),
-    sa.Column('status', sa.String(length=20), nullable=False, comment='Delivery status'),
-    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.CheckConstraint("status IN ('NotificationStatus.SENT', 'NotificationStatus.FAILED')", name='ck_notification_log_status'),
-    sa.PrimaryKeyConstraint('id'),
-    schema='sistema_unidad_territorial'
-    )
     op.create_table('outbox',
     sa.Column('type', sa.Text(), nullable=False, comment='Message type: email, whatsapp, webhook, etc.'),
     sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=False, comment='Message data'),
+    sa.Column('status', sa.Text(), server_default='pending', nullable=False, comment='Processing status: pending, processing, processed, failed'),
     sa.Column('attempts', sa.Integer(), server_default='0', nullable=False, comment='Number of delivery attempts'),
+    sa.Column('max_attempts', sa.Integer(), server_default='3', nullable=False, comment='Maximum delivery attempts before marking as failed'),
     sa.Column('next_attempt_at', sa.DateTime(timezone=True), nullable=True, comment='Next delivery attempt timestamp'),
+    sa.Column('processed_at', sa.DateTime(timezone=True), nullable=True, comment='Timestamp when successfully processed'),
     sa.Column('last_error', sa.Text(), nullable=True, comment='Last error message'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
     sa.CheckConstraint("jsonb_typeof(payload) = 'object'", name='ck_outbox_payload_object'),
     sa.CheckConstraint("payload ? 'to'", name='ck_outbox_payload_has_to'),
+    sa.CheckConstraint("status IN ('pending', 'processing', 'processed', 'failed')", name='ck_outbox_status'),
+    sa.CheckConstraint('attempts <= max_attempts', name='ck_outbox_attempts_limit'),
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
     op.create_table('roles',
     sa.Column('name', sa.String(length=50), nullable=False, comment='Role name'),
-    sa.Column('scope', sa.Enum('GLOBAL', 'TENANT', 'COMMUNITY', name='role_scope_enum'), server_default='GLOBAL', nullable=False, comment='Role scope (GLOBAL, TENANT, COMMUNITY)'),
+    sa.Column('scope', sa.Enum('GLOBAL', 'TENANT', 'COMMUNITY', 'SYSTEM', name='role_scope_enum'), server_default='SYSTEM', nullable=False, comment='Role scope (SYSTEM, TENANT, COMMUNITY)'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
@@ -69,35 +63,56 @@ def upgrade() -> None:
     sa.UniqueConstraint('name', 'scope', name='uq_role_name_scope'),
     schema='sistema_unidad_territorial'
     )
-    op.create_table('spaces',
-    sa.Column('name', sa.Text(), nullable=False, comment='Space name'),
-    sa.Column('description', sa.Text(), nullable=True, comment='Space description'),
+    op.create_table('tenants',
+    sa.Column('name', sa.Text(), nullable=False, comment='Tenant name'),
+    sa.Column('domain', sa.Text(), nullable=True, comment="Email domain for institutional emails (e.g., 'recoleta.cl')"),
+    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='Soft delete timestamp - NULL means active'),
+    sa.PrimaryKeyConstraint('id'),
+    schema='sistema_unidad_territorial'
+    )
+    op.create_table('user_emails',
+    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID for the email'),
+    sa.Column('email', postgresql.CITEXT(), nullable=False, comment='Email address'),
+    sa.Column('verified_at', sa.DateTime(timezone=True), nullable=True, comment='Email verification timestamp'),
+    sa.Column('is_primary', sa.Boolean(), server_default='false', nullable=False, comment="Whether this is the user's primary email"),
+    sa.Column('email_type', sa.String(length=20), server_default='personal', nullable=False, comment='Email type: personal, institutional, recovery'),
+    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.CheckConstraint("email_type IN ('personal', 'institutional', 'recovery')", name='ck_user_email_type'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('email'),
+    sa.UniqueConstraint('user_id', 'email', name='uq_user_email'),
+    schema='sistema_unidad_territorial'
+    )
+    op.create_table('users',
+    sa.Column('primary_email_id', sa.UUID(), nullable=True, comment='Primary email ID (references user_emails table)'),
+    sa.Column('password_hash', sa.Text(), nullable=True, comment='Password hash using Argon2id (NULL for OAuth-only users - preferred)'),
+    sa.Column('status', sa.Enum('ACTIVE', 'INACTIVE', 'BLOCKED', name='user_status_enum'), server_default='ACTIVE', nullable=False, comment='User account status'),
+    sa.Column('full_name', sa.Text(), nullable=True, comment="User's full name"),
+    sa.Column('rut', sa.String(length=12), nullable=True, comment='Chilean RUT (Rol Único Tributario)'),
+    sa.Column('address', sa.Text(), nullable=True, comment="User's residential address"),
+    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='Soft delete timestamp - NULL means active'),
+    sa.PrimaryKeyConstraint('id'),
+    schema='sistema_unidad_territorial'
+    )
+    op.create_table('address_evidences',
+    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID for the evidence'),
+    sa.Column('type', sa.String(length=30), nullable=False, comment='Type of address evidence'),
+    sa.Column('url', sa.Text(), nullable=False, comment='URL of the evidence file'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
     sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
+    sa.CheckConstraint("type IN ('utility_bill', 'rental_contract', 'other')", name='ck_evidence_type'),
+    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
-    schema='sistema_unidad_territorial'
-    )
-    op.create_table('tenants',
-    sa.Column('name', sa.Text(), nullable=False, comment='Tenant name'),
-    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.PrimaryKeyConstraint('id'),
-    schema='sistema_unidad_territorial'
-    )
-    op.create_table('users',
-    sa.Column('email', postgresql.CITEXT(), nullable=True, comment='User email (can be NULL for OAuth-only users)'),
-    sa.Column('email_verified_at', sa.DateTime(timezone=True), nullable=True, comment='Email verification timestamp'),
-    sa.Column('password_hash', sa.Text(), nullable=True, comment='Password hash (NULL for OAuth-only users)'),
-    sa.Column('status', sa.Enum('ACTIVE', 'INACTIVE', 'BLOCKED', name='user_status_enum'), server_default='ACTIVE', nullable=False, comment='User account status'),
-    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email'),
-    sa.UniqueConstraint('email', name='uq_user_email'),
     schema='sistema_unidad_territorial'
     )
     op.create_table('audit_logs',
@@ -115,16 +130,24 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
-    op.create_table('auth_magic_links',
-    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID for the magic link'),
-    sa.Column('token_hash', sa.Text(), nullable=False, comment='Hashed authentication token'),
-    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False, comment='Magic link expiration timestamp'),
-    sa.Column('used_at', sa.DateTime(timezone=True), nullable=True, comment='Timestamp when the link was used'),
+    op.create_table('certificates',
+    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID for the certificate'),
+    sa.Column('approver_id', sa.UUID(), nullable=True, comment='User ID who approved the certificate'),
+    sa.Column('status', sa.String(length=20), nullable=False, comment='Certificate processing status'),
+    sa.Column('reason', sa.Text(), nullable=True, comment='Reason for rejection or observations'),
+    sa.Column('folio', sa.Text(), nullable=False, comment='Certificate folio number'),
+    sa.Column('pdf_url', sa.Text(), nullable=True, comment='URL of the generated PDF certificate'),
+    sa.Column('pdf_sha256', sa.String(length=64), nullable=True, comment='SHA256 hash of the PDF file'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
+    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
+    sa.CheckConstraint("pdf_sha256 IS NULL OR pdf_sha256 ~ '^[0-9a-f]{64}$'", name='ck_certificate_sha256_format'),
+    sa.CheckConstraint("status IN ('CertificateStatus.PENDING', 'CertificateStatus.APPROVED', 'CertificateStatus.REJECTED', 'CertificateStatus.ISSUED')", name='ck_certificate_status'),
+    sa.ForeignKeyConstraint(['approver_id'], ['sistema_unidad_territorial.users.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('tenant_id', 'folio', name='uq_certificate_tenant_folio'),
     schema='sistema_unidad_territorial'
     )
     op.create_table('communities',
@@ -134,27 +157,51 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='Soft delete timestamp - NULL means active'),
     sa.ForeignKeyConstraint(['tenant_id'], ['sistema_unidad_territorial.tenants.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('tenant_id', 'name', name='uq_community_tenant_name'),
     schema='sistema_unidad_territorial'
     )
-    op.create_table('residents',
-    sa.Column('user_id', sa.UUID(), nullable=True, comment='Associated user ID (optional)'),
-    sa.Column('rut', sa.String(length=15), nullable=False, comment='Chilean RUT (national ID)'),
-    sa.Column('name', sa.Text(), nullable=False, comment='Full name of the resident'),
-    sa.Column('address', sa.Text(), nullable=False, comment='Complete address'),
-    sa.Column('neighborhood_unit', sa.Text(), nullable=True, comment='Neighborhood unit (UV - Unidad Vecinal)'),
-    sa.Column('verified', sa.Boolean(), server_default='false', nullable=False, comment='Whether the resident is verified'),
-    sa.Column('registration_date', sa.Date(), server_default=sa.text('CURRENT_DATE'), nullable=False, comment='Date when the resident was registered'),
+    op.create_table('notification_logs',
+    sa.Column('outbox_id', sa.UUID(), nullable=True, comment='Outbox event that originated this notification'),
+    sa.Column('type', sa.Text(), nullable=False, comment='Notification type'),
+    sa.Column('destination', sa.Text(), nullable=False, comment='Destination (email, phone, etc.)'),
+    sa.Column('status', sa.String(length=20), nullable=False, comment='Delivery status'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
-    sa.CheckConstraint("rut ~ '^[0-9]{1,2}\\.?[0-9]{3}\\.?[0-9]{3}-[0-9kK]{1}$'", name='ck_resident_rut_format'),
-    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='SET NULL'),
+    sa.CheckConstraint("status IN ('NotificationStatus.SENT', 'NotificationStatus.FAILED')", name='ck_notification_log_status'),
+    sa.ForeignKeyConstraint(['outbox_id'], ['sistema_unidad_territorial.outbox.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('rut'),
+    schema='sistema_unidad_territorial'
+    )
+    op.create_table('system_role_assignments',
+    sa.Column('role_id', sa.UUID(), nullable=False, comment='Role ID'),
+    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID'),
+    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='Soft delete timestamp - NULL means active'),
+    sa.ForeignKeyConstraint(['role_id'], ['sistema_unidad_territorial.roles.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('role_id', 'user_id', name='uq_system_role_assignment'),
+    schema='sistema_unidad_territorial'
+    )
+    op.create_table('tenant_role_assignments',
+    sa.Column('role_id', sa.UUID(), nullable=False, comment='Role ID'),
+    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID'),
+    sa.Column('tenant_id', sa.UUID(), nullable=False, comment='Tenant ID'),
+    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='Soft delete timestamp - NULL means active'),
+    sa.ForeignKeyConstraint(['role_id'], ['sistema_unidad_territorial.roles.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tenant_id'], ['sistema_unidad_territorial.tenants.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('role_id', 'user_id', 'tenant_id', name='uq_tenant_role_assignment'),
     schema='sistema_unidad_territorial'
     )
     op.create_table('user_oauth_identities',
@@ -193,19 +240,6 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
-    op.create_table('address_evidences',
-    sa.Column('resident_id', sa.UUID(), nullable=False, comment='Resident ID for the evidence'),
-    sa.Column('type', sa.String(length=30), nullable=False, comment='Type of address evidence'),
-    sa.Column('url', sa.Text(), nullable=False, comment='URL of the evidence file'),
-    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
-    sa.CheckConstraint("type IN ('EvidenceType.UTILITY_BILL', 'EvidenceType.RENTAL_CONTRACT', 'EvidenceType.OTHER')", name='ck_evidence_type'),
-    sa.ForeignKeyConstraint(['resident_id'], ['sistema_unidad_territorial.residents.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    schema='sistema_unidad_territorial'
-    )
     op.create_table('authentication_log',
     sa.Column('user_id', sa.UUID(), nullable=True, comment='ID del usuario (NULL si no se pudo identificar)'),
     sa.Column('user_session_id', sa.UUID(), nullable=True, comment='ID de sesión creada en caso de éxito'),
@@ -233,28 +267,24 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
-    op.create_table('certificates',
-    sa.Column('resident_id', sa.UUID(), nullable=False, comment='Resident ID for the certificate'),
-    sa.Column('approver_id', sa.UUID(), nullable=True, comment='User ID who approved the certificate'),
-    sa.Column('status', sa.String(length=20), nullable=False, comment='Certificate processing status'),
-    sa.Column('reason', sa.Text(), nullable=True, comment='Reason for rejection or observations'),
-    sa.Column('folio', sa.Text(), nullable=False, comment='Certificate folio number'),
-    sa.Column('pdf_url', sa.Text(), nullable=True, comment='URL of the generated PDF certificate'),
-    sa.Column('pdf_sha256', sa.String(length=64), nullable=True, comment='SHA256 hash of the PDF file'),
+    op.create_table('community_role_assignments',
+    sa.Column('role_id', sa.UUID(), nullable=False, comment='Role ID'),
+    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID'),
+    sa.Column('community_id', sa.UUID(), nullable=False, comment='Community ID'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
-    sa.CheckConstraint("pdf_sha256 IS NULL OR pdf_sha256 ~ '^[0-9a-f]{64}$'", name='ck_certificate_sha256_format'),
-    sa.CheckConstraint("status IN ('CertificateStatus.PENDING', 'CertificateStatus.APPROVED', 'CertificateStatus.REJECTED', 'CertificateStatus.ISSUED')", name='ck_certificate_status'),
-    sa.ForeignKeyConstraint(['approver_id'], ['sistema_unidad_territorial.users.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['resident_id'], ['sistema_unidad_territorial.residents.id'], ondelete='RESTRICT'),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='Soft delete timestamp - NULL means active'),
+    sa.ForeignKeyConstraint(['community_id'], ['sistema_unidad_territorial.communities.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['role_id'], ['sistema_unidad_territorial.roles.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('tenant_id', 'folio', name='uq_certificate_tenant_folio'),
+    sa.UniqueConstraint('role_id', 'user_id', 'community_id', name='uq_community_role_assignment'),
     schema='sistema_unidad_territorial'
     )
     op.create_table('projects',
-    sa.Column('requesting_resident_id', sa.UUID(), nullable=False, comment='Resident ID who requested the project'),
+    sa.Column('community_id', sa.UUID(), nullable=False, comment='Community ID where the project is proposed'),
+    sa.Column('requesting_user_id', sa.UUID(), nullable=False, comment='User ID who requested the project'),
     sa.Column('title', sa.Text(), nullable=False, comment='Project title'),
     sa.Column('description', sa.Text(), nullable=False, comment='Project description'),
     sa.Column('status', sa.String(length=20), nullable=False, comment='Project status'),
@@ -262,9 +292,9 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
     sa.CheckConstraint("status IN ('ProjectStatus.PENDING', 'ProjectStatus.IN_PROGRESS', 'ProjectStatus.COMPLETED', 'ProjectStatus.REJECTED')", name='ck_project_status'),
-    sa.ForeignKeyConstraint(['requesting_resident_id'], ['sistema_unidad_territorial.residents.id'], ondelete='RESTRICT'),
+    sa.ForeignKeyConstraint(['community_id'], ['sistema_unidad_territorial.communities.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['requesting_user_id'], ['sistema_unidad_territorial.users.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
@@ -289,52 +319,32 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
-    op.create_table('reservations',
-    sa.Column('space_id', sa.UUID(), nullable=False, comment='Space ID for the reservation'),
-    sa.Column('requesting_resident_id', sa.UUID(), nullable=False, comment='Resident ID who made the reservation'),
-    sa.Column('start_time', sa.DateTime(timezone=True), nullable=False, comment='Reservation start time'),
-    sa.Column('end_time', sa.DateTime(timezone=True), nullable=False, comment='Reservation end time'),
-    sa.Column('status', sa.String(length=20), nullable=False, comment='Reservation status'),
-    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
-    sa.CheckConstraint("status IN ('ReservationStatus.PENDING', 'ReservationStatus.CONFIRMED', 'ReservationStatus.CANCELLED')", name='ck_reservation_status'),
-    sa.CheckConstraint('end_time > start_time', name='ck_reservation_end_after_start'),
-    sa.ForeignKeyConstraint(['requesting_resident_id'], ['sistema_unidad_territorial.residents.id'], ondelete='RESTRICT'),
-    sa.ForeignKeyConstraint(['space_id'], ['sistema_unidad_territorial.spaces.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    schema='sistema_unidad_territorial'
-    )
     op.create_table('resident_memberships',
     sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID for the membership'),
     sa.Column('community_id', sa.UUID(), nullable=False, comment='Community ID for the membership'),
     sa.Column('status', sa.Enum('PENDING', 'APPROVED', 'REJECTED', 'NEEDS_CHANGES', name='membership_status_enum'), nullable=False, comment='Membership status'),
     sa.Column('verified', sa.Boolean(), server_default='false', nullable=False, comment='Whether the membership is verified'),
     sa.Column('verified_at', sa.DateTime(timezone=True), nullable=True, comment='Verification timestamp'),
+    sa.Column('board_role', sa.Enum('president', 'secretary', 'treasurer', 'vocal', name='board_role_enum'), nullable=True, comment='Board role if member is part of community governance'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='Soft delete timestamp - NULL means active'),
     sa.ForeignKeyConstraint(['community_id'], ['sistema_unidad_territorial.communities.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('user_id', 'community_id', name='uq_membership_user_community'),
     schema='sistema_unidad_territorial'
     )
-    op.create_table('role_assignments',
-    sa.Column('role_id', sa.UUID(), nullable=False, comment='Role ID'),
-    sa.Column('user_id', sa.UUID(), nullable=False, comment='User ID'),
-    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID (for TENANT scope roles)'),
-    sa.Column('community_id', sa.UUID(), nullable=True, comment='Community ID (for COMMUNITY scope roles)'),
+    op.create_table('spaces',
+    sa.Column('community_id', sa.UUID(), nullable=False, comment='Community ID that owns this space'),
+    sa.Column('name', sa.Text(), nullable=False, comment='Space name'),
+    sa.Column('description', sa.Text(), nullable=True, comment='Space description'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
     sa.ForeignKeyConstraint(['community_id'], ['sistema_unidad_territorial.communities.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['role_id'], ['sistema_unidad_territorial.roles.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['tenant_id'], ['sistema_unidad_territorial.tenants.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['user_id'], ['sistema_unidad_territorial.users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('role_id', 'user_id', 'tenant_id', 'community_id', name='uq_role_assignment'),
     schema='sistema_unidad_territorial'
     )
     op.create_table('project_attachments',
@@ -344,7 +354,6 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
-    sa.Column('tenant_id', sa.UUID(), nullable=True, comment='Tenant ID for multi-tenancy support'),
     sa.ForeignKeyConstraint(['project_id'], ['sistema_unidad_territorial.projects.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
@@ -352,11 +361,27 @@ def upgrade() -> None:
     op.create_table('registration_request_attachments',
     sa.Column('registration_request_id', sa.UUID(), nullable=False, comment='Registration request ID'),
     sa.Column('url', sa.Text(), nullable=False, comment='URL of the attachment file'),
-    sa.Column('kind', sa.Enum('utility_bill', 'rent_contract', 'other', name='attachment_kind_enum'), nullable=False, comment='Type of attachment'),
+    sa.Column('kind', sa.Enum('id_card_front', 'id_card_back', 'utility_bill', 'rent_contract', 'other', name='attachment_kind_enum'), nullable=False, comment='Type of attachment'),
     sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
     sa.ForeignKeyConstraint(['registration_request_id'], ['sistema_unidad_territorial.registration_requests.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    schema='sistema_unidad_territorial'
+    )
+    op.create_table('reservations',
+    sa.Column('space_id', sa.UUID(), nullable=False, comment='Space ID for the reservation'),
+    sa.Column('requesting_user_id', sa.UUID(), nullable=False, comment='User ID who made the reservation'),
+    sa.Column('start_time', sa.DateTime(timezone=True), nullable=False, comment='Reservation start time'),
+    sa.Column('end_time', sa.DateTime(timezone=True), nullable=False, comment='Reservation end time'),
+    sa.Column('status', sa.String(length=20), nullable=False, comment='Reservation status'),
+    sa.Column('id', sa.UUID(), server_default=sa.text('uuid_generate_v4()'), nullable=False, comment='Primary key UUID'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Creation timestamp in Chile timezone'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='Last update timestamp in Chile timezone'),
+    sa.CheckConstraint("status IN ('ReservationStatus.PENDING', 'ReservationStatus.CONFIRMED', 'ReservationStatus.CANCELLED')", name='ck_reservation_status'),
+    sa.CheckConstraint('end_time > start_time', name='ck_reservation_end_after_start'),
+    sa.ForeignKeyConstraint(['requesting_user_id'], ['sistema_unidad_territorial.users.id'], ondelete='RESTRICT'),
+    sa.ForeignKeyConstraint(['space_id'], ['sistema_unidad_territorial.spaces.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     schema='sistema_unidad_territorial'
     )
@@ -366,27 +391,28 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_table('reservations', schema='sistema_unidad_territorial')
     op.drop_table('registration_request_attachments', schema='sistema_unidad_territorial')
     op.drop_table('project_attachments', schema='sistema_unidad_territorial')
-    op.drop_table('role_assignments', schema='sistema_unidad_territorial')
+    op.drop_table('spaces', schema='sistema_unidad_territorial')
     op.drop_table('resident_memberships', schema='sistema_unidad_territorial')
-    op.drop_table('reservations', schema='sistema_unidad_territorial')
     op.drop_table('registration_requests', schema='sistema_unidad_territorial')
     op.drop_table('projects', schema='sistema_unidad_territorial')
-    op.drop_table('certificates', schema='sistema_unidad_territorial')
+    op.drop_table('community_role_assignments', schema='sistema_unidad_territorial')
     op.drop_table('authentication_log', schema='sistema_unidad_territorial')
-    op.drop_table('address_evidences', schema='sistema_unidad_territorial')
     op.drop_table('user_sessions', schema='sistema_unidad_territorial')
     op.drop_table('user_oauth_identities', schema='sistema_unidad_territorial')
-    op.drop_table('residents', schema='sistema_unidad_territorial')
+    op.drop_table('tenant_role_assignments', schema='sistema_unidad_territorial')
+    op.drop_table('system_role_assignments', schema='sistema_unidad_territorial')
+    op.drop_table('notification_logs', schema='sistema_unidad_territorial')
     op.drop_table('communities', schema='sistema_unidad_territorial')
-    op.drop_table('auth_magic_links', schema='sistema_unidad_territorial')
+    op.drop_table('certificates', schema='sistema_unidad_territorial')
     op.drop_table('audit_logs', schema='sistema_unidad_territorial')
+    op.drop_table('address_evidences', schema='sistema_unidad_territorial')
     op.drop_table('users', schema='sistema_unidad_territorial')
+    op.drop_table('user_emails', schema='sistema_unidad_territorial')
     op.drop_table('tenants', schema='sistema_unidad_territorial')
-    op.drop_table('spaces', schema='sistema_unidad_territorial')
     op.drop_table('roles', schema='sistema_unidad_territorial')
     op.drop_table('outbox', schema='sistema_unidad_territorial')
-    op.drop_table('notification_logs', schema='sistema_unidad_territorial')
     op.drop_table('news', schema='sistema_unidad_territorial')
     # ### end Alembic commands ###
