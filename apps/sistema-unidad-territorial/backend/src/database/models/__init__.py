@@ -1,20 +1,25 @@
 from src.database.models.base import (
     BaseModel,
+    SoftDeleteBaseModel,
     TenantBaseModel,
+    TenantSoftDeleteModel,
     UUIDMixin,
     TimestampMixin,
     TenantMixin,
+    SoftDeleteMixin,
 )
 from src.database.models.auth import (
     User,
+    UserEmail,
     Role,
-    AuthMagicLink,
     UserOauthIdentity,
     UserSession,
     AuthenticationLog,
-    RoleAssignment,
+    SystemRoleAssignment,
+    TenantRoleAssignment,
+    CommunityRoleAssignment,
 )
-from src.database.models.residents import Resident, AddressEvidence
+from src.database.models.evidences import AddressEvidence
 from src.database.models.certificates import Certificate
 from src.database.models.spaces import Space, Reservation
 from src.database.models.projects import Project, ProjectAttachment
@@ -31,22 +36,26 @@ from src.database.models.community import (
 __all__ = [
     # Base
     "BaseModel",
-    "TenantBaseModel", 
+    "SoftDeleteBaseModel",
+    "TenantBaseModel",
+    "TenantSoftDeleteModel",
     "UUIDMixin",
     "TimestampMixin",
     "TenantMixin",
+    "SoftDeleteMixin",
 
     # Auth
     "User",
+    "UserEmail",
     "Role",
-    "AuthMagicLink",
     "UserOauthIdentity",
     "UserSession",
     "AuthenticationLog",
-    "RoleAssignment",
+    "SystemRoleAssignment",
+    "TenantRoleAssignment",
+    "CommunityRoleAssignment",
 
-    # Residents
-    "Resident",
+    # Evidences
     "AddressEvidence",
 
     # Certificates
