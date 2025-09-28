@@ -9,7 +9,6 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     String,
-    Table,
     Text,
     UniqueConstraint,
     CheckConstraint,
@@ -20,39 +19,47 @@ from sqlalchemy.dialects.postgresql import CITEXT, UUID, INET
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import BaseModel, TenantBaseModel
 from src.database.enums import (
-    UserStatus,
     AuthProvider,
     AuthMethod, 
     AuthResult,
     AuthFailureReason,
     RoleScope,
+    UserStatus,
 )
-from src.database.timezone_utils import now_chile
+from src.database.utils import now_chile
+from src.database.models.base import BaseModel, TenantBaseModel, SoftDeleteBaseModel
 
 
-class User(BaseModel):
-    """User model for the system."""
+class User(SoftDeleteBaseModel):
+    """
+    User model for the system.
+
+    AUTHENTICATION STRATEGY:
+    - Primary: OIDC/OAuth (Google, etc.) - no password needed
+    - Fallback: Local password for users who prefer it
+    - Institutional: OIDC + verified institutional email for municipal roles
+
+    EMAIL MANAGEMENT:
+    - All emails centralized in user_emails table
+    - primary_email_id points to the main email
+    - Supports multiple emails per user (personal + institutional)
+    - Email verification handled in user_emails.verified_at
+    """
 
     __tablename__ = 'users'
 
-    # Basic fields
-    email: Mapped[Optional[str]] = Column(
-        CITEXT, 
-        nullable=True, 
-        unique=True,
-        comment="User email (can be NULL for OAuth-only users)"
-    )
-    email_verified_at: Mapped[Optional[datetime]] = Column(
-        DateTime(timezone=True), 
+    # Primary email reference (centralized in user_emails table)
+    primary_email_id: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.user_emails.id', ondelete='SET NULL'), 
         nullable=True,
-        comment="Email verification timestamp"
+        comment="Primary email ID (references user_emails table)"
     )
     password_hash: Mapped[Optional[str]] = Column(
         Text, 
         nullable=True, 
-        comment="Password hash (NULL for OAuth-only users)"
+        comment="Password hash using Argon2id (NULL for OAuth-only users - preferred)"
     )
     status: Mapped[UserStatus] = Column(
         Enum(UserStatus, name='user_status_enum', values_callable=lambda obj: [e.name for e in obj]),
@@ -62,42 +69,256 @@ class User(BaseModel):
         comment="User account status"
     )
 
+    # Personal information
+    full_name: Mapped[Optional[str]] = Column(
+        Text, 
+        nullable=True,
+        comment="User's full name"
+    )
+    rut: Mapped[Optional[str]] = Column(
+        String(12), 
+        nullable=True,
+        comment="Chilean RUT (Rol Único Tributario)"
+    )
+    address: Mapped[Optional[str]] = Column(
+        Text, 
+        nullable=True,
+        comment="User's residential address"
+    )
+
     # Constraints and schema
     __table_args__ = (
-        UniqueConstraint('email', name='uq_user_email'),
+        Index('idx_user_primary_email', 'primary_email_id'),
+        Index('idx_user_rut', 'rut'),
+        Index('idx_user_full_name', 'full_name'),
         {'schema': SCHEMA}
     )
 
-    # Relationships - Solo sistema unificado
-    role_assignments: Mapped[List["RoleAssignment"]] = relationship(
-        "RoleAssignment",
-        foreign_keys="RoleAssignment.user_id",
-        back_populates="user"
+    # Role assignments - separated by scope
+    system_role_assignments: Mapped[List["SystemRoleAssignment"]] = relationship(
+        "SystemRoleAssignment",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    tenant_role_assignments: Mapped[List["TenantRoleAssignment"]] = relationship(
+        "TenantRoleAssignment",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    community_role_assignments: Mapped[List["CommunityRoleAssignment"]] = relationship(
+        "CommunityRoleAssignment",
+        back_populates="user",
+        cascade="all, delete-orphan"
     )
     oauth_identities: Mapped[List["UserOauthIdentity"]] = relationship(
         "UserOauthIdentity",
         back_populates="user",
         cascade="all, delete-orphan"
     )
-    magic_links: Mapped[List["AuthMagicLink"]] = relationship(
-        "AuthMagicLink",
-        back_populates="user",
-        cascade="all, delete-orphan"
-    )
-    # Resident relationship - using string to avoid circular import
-    resident = relationship(
-        "Resident",
-        back_populates="user",
-        uselist=False
-    )
     sessions: Mapped[List["UserSession"]] = relationship(
         "UserSession",
         back_populates="user",
         cascade="all, delete-orphan"
     )
+    # Email relationships
+    primary_email: Mapped[Optional["UserEmail"]] = relationship(
+        "UserEmail",
+        foreign_keys=[primary_email_id],
+        post_update=True  # Avoid circular dependency
+    )
+    emails: Mapped[List["UserEmail"]] = relationship(
+        "UserEmail",
+        foreign_keys="UserEmail.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
+    @property
+    def email(self) -> Optional[str]:
+        """Get primary email address."""
+        return self.primary_email.email if self.primary_email else None
+
+    @property
+    def is_email_verified(self) -> bool:
+        """Check if primary email is verified."""
+        return self.primary_email.is_verified if self.primary_email else False
+
+    def get_verified_emails(self) -> List["UserEmail"]:
+        """Get all verified emails for this user."""
+        return [email for email in self.emails if email.is_verified]
+
+    def get_institutional_emails(self) -> List["UserEmail"]:
+        """Get all institutional emails for this user."""
+        return [email for email in self.emails if email.is_institutional]
+
+    def has_verified_institutional_email(self, domain: str) -> bool:
+        """Check if user has a verified institutional email for the given domain."""
+        return any(
+            email.is_verified and email.get_domain() == domain.lower()
+            for email in self.get_institutional_emails()
+        )
+
+    @property
+    def is_oauth_only(self) -> bool:
+        """Check if user uses only OAuth authentication (no local password)."""
+        return self.password_hash is None
+
+    @property
+    def has_local_password(self) -> bool:
+        """Check if user has a local password set."""
+        return self.password_hash is not None
+
+    @property
+    def auth_methods(self) -> List[str]:
+        """Get available authentication methods for this user."""
+        methods = []
+        if self.has_local_password:
+            methods.append("password")
+        if self.oauth_identities:
+            methods.extend([identity.provider for identity in self.oauth_identities])
+        return methods
+
+    @property
+    def display_name(self) -> str:
+        """Get display name for the user (full name or email)."""
+        if self.full_name:
+            return self.full_name
+        return self.email or "Usuario sin nombre"
+
+    @property
+    def has_complete_profile(self) -> bool:
+        """Check if user has complete personal information."""
+        return all([
+            self.full_name,
+            self.rut,
+            self.address,
+            self.email
+        ])
+
+    def format_rut(self) -> Optional[str]:
+        """Format RUT with standard Chilean format (XX.XXX.XXX-X)."""
+        if not self.rut:
+            return None
+        
+        # Remove any existing formatting
+        clean_rut = ''.join(filter(str.isalnum, self.rut.upper()))
+        
+        if len(clean_rut) < 8:
+            return self.rut  # Return as-is if too short
+        
+        # Split into number and verification digit
+        rut_number = clean_rut[:-1]
+        verification_digit = clean_rut[-1]
+        
+        # Add dots every 3 digits from right to left
+        formatted_number = ""
+        for i, digit in enumerate(reversed(rut_number)):
+            if i > 0 and i % 3 == 0:
+                formatted_number = "." + formatted_number
+            formatted_number = digit + formatted_number
+        
+        return f"{formatted_number}-{verification_digit}"
 
     def __repr__(self) -> str:
-        return f"User(id={self.id}, email={self.email}, status={self.status})"
+        email_display = self.email or "no-email"
+        name_display = f" ({self.full_name})" if self.full_name else ""
+        return f"User(id={self.id}, email={email_display}{name_display}, status={self.status})"
+
+
+class UserEmail(BaseModel):
+    """
+    User email model - centralized email management.
+
+    This is the single source of truth for all user emails:
+    - Personal emails (from registration/OAuth)
+    - Institutional emails (for municipal roles)
+    - Multiple emails per user supported
+    - Only one primary email per user
+    """
+
+    __tablename__ = 'user_emails'
+
+    user_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="User ID for the email"
+    )
+    email: Mapped[str] = Column(
+        CITEXT, 
+        nullable=False,
+        unique=True,  # Global email uniqueness
+        comment="Email address"
+    )
+    verified_at: Mapped[Optional[datetime]] = Column(
+        DateTime(timezone=True), 
+        nullable=True,
+        comment="Email verification timestamp"
+    )
+    is_primary: Mapped[bool] = Column(
+        Boolean, 
+        nullable=False, 
+        default=False,
+        server_default='false',
+        comment="Whether this is the user's primary email"
+    )
+    email_type: Mapped[str] = Column(
+        String(20), 
+        nullable=False, 
+        default='personal',
+        server_default='personal',
+        comment="Email type: personal, institutional, recovery"
+    )
+
+    # Constraints and schema
+    __table_args__ = (
+        UniqueConstraint('user_id', 'email', name='uq_user_email'),
+        CheckConstraint(
+            "email_type IN ('personal', 'institutional', 'recovery')",
+            name='ck_user_email_type'
+        ),
+        # Partial unique index to ensure only one primary email per user
+        Index('idx_user_primary_email_unique', 'user_id', unique=True,
+              postgresql_where="is_primary = true"),
+        Index('idx_user_email_user', 'user_id'),
+        Index('idx_user_email_verified', 'email', 'verified_at'),
+        Index('idx_user_email_primary', 'user_id', 'is_primary'),
+        {'schema': SCHEMA}
+    )
+
+    # Relationships
+    user: Mapped[User] = relationship(
+        "User", 
+        foreign_keys=[user_id],
+        back_populates="emails"
+    )
+
+    @property
+    def is_verified(self) -> bool:
+        """Check if the email is verified."""
+        return self.verified_at is not None
+
+    @property
+    def is_institutional(self) -> bool:
+        """Check if this is an institutional email."""
+        return self.email_type == 'institutional'
+
+    def verify(self) -> None:
+        """Mark the email as verified."""
+        self.verified_at = now_chile()
+
+    def set_as_primary(self) -> None:
+        """Mark this email as primary (will need to unset others in the same transaction)."""
+        self.is_primary = True
+
+    def get_domain(self) -> str:
+        """Extract domain from email address."""
+        return self.email.split('@')[1].lower() if '@' in self.email else ''
+
+    def __repr__(self) -> str:
+        primary_flag = " (PRIMARY)" if self.is_primary else ""
+        verified_flag = " ✓" if self.is_verified else ""
+        return f"UserEmail(id={self.id}, email={self.email}, type={self.email_type}{primary_flag}{verified_flag})"
 
 
 class Role(BaseModel):
@@ -114,9 +335,9 @@ class Role(BaseModel):
     scope: Mapped[RoleScope] = Column(
         Enum(RoleScope, name='role_scope_enum', values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
-        default=RoleScope.GLOBAL,
-        server_default='GLOBAL',
-        comment="Role scope (GLOBAL, TENANT, COMMUNITY)"
+        default=RoleScope.SYSTEM,
+        server_default='SYSTEM',
+        comment="Role scope (SYSTEM, TENANT, COMMUNITY)"
     )
 
     # Constraints
@@ -125,9 +346,19 @@ class Role(BaseModel):
         {'schema': SCHEMA}
     )
 
-    # Relationships - Solo sistema unificado
-    role_assignments: Mapped[List["RoleAssignment"]] = relationship(
-        "RoleAssignment",
+    # Role assignments - separated by scope
+    system_assignments: Mapped[List["SystemRoleAssignment"]] = relationship(
+        "SystemRoleAssignment",
+        back_populates="role",
+        cascade="all, delete-orphan"
+    )
+    tenant_assignments: Mapped[List["TenantRoleAssignment"]] = relationship(
+        "TenantRoleAssignment",
+        back_populates="role",
+        cascade="all, delete-orphan"
+    )
+    community_assignments: Mapped[List["CommunityRoleAssignment"]] = relationship(
+        "CommunityRoleAssignment",
         back_populates="role",
         cascade="all, delete-orphan"
     )
@@ -136,59 +367,13 @@ class Role(BaseModel):
         return f"Role(id={self.id}, name={self.name}, scope={self.scope})"
 
 
-class AuthMagicLink(BaseModel):
-    """Magic link model for passwordless authentication."""
-
-    __tablename__ = 'auth_magic_links'
-    __table_args__ = {'schema': SCHEMA}
-
-    user_id: Mapped[UUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="User ID for the magic link"
-    )
-    token_hash: Mapped[str] = Column(
-        Text, 
-        nullable=False, 
-        comment="Hashed authentication token"
-    )
-    expires_at: Mapped[datetime] = Column(
-        DateTime(timezone=True), 
-        nullable=False,
-        comment="Magic link expiration timestamp"
-    )
-    used_at: Mapped[Optional[datetime]] = Column(
-        DateTime(timezone=True), 
-        nullable=True,
-        comment="Timestamp when the link was used"
-    )
-
-    # Relationships
-    user: Mapped[User] = relationship("User", back_populates="magic_links")
-
-    def is_expired(self) -> bool:
-        """Check if the magic link has expired."""
-        return now_chile() > self.expires_at
-
-    def is_used(self) -> bool:
-        """Check if the magic link has been used."""
-        return self.used_at is not None
-
-    def is_valid(self) -> bool:
-        """Check if the magic link is valid (not expired and not used)."""
-        return not self.is_expired() and not self.is_used()
-
-    def __repr__(self) -> str:
-        return f"AuthMagicLink(id={self.id}, user_id={self.user_id}, expires_at={self.expires_at})"
-
 
 class UserOauthIdentity(TenantBaseModel):
     """OAuth identity model for users."""
 
     __tablename__ = 'user_oauth_identities'
 
-    user_id: Mapped[UUID] = Column(
+    user_id: Mapped[PyUUID] = Column(
         UUID(as_uuid=True), 
         ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
         nullable=False,
@@ -272,7 +457,7 @@ class UserSession(TenantBaseModel):
         {'schema': SCHEMA}
     )
 
-    user_id: Mapped[UUID] = Column(
+    user_id: Mapped[PyUUID] = Column(
         UUID(as_uuid=True), 
         ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
         nullable=False,
@@ -474,10 +659,10 @@ class AuthenticationLog(TenantBaseModel):
                 f"provider={self.provider}, email={self.email}, ip={self.ip})")
 
 
-class RoleAssignment(BaseModel):
-    """Unified role assignment model - single source of truth for all role assignments."""
+class SystemRoleAssignment(SoftDeleteBaseModel):
+    """System-level role assignments (admin, etc.)."""
 
-    __tablename__ = 'role_assignments'
+    __tablename__ = 'system_role_assignments'
 
     role_id: Mapped[PyUUID] = Column(
         UUID(as_uuid=True), 
@@ -491,49 +676,127 @@ class RoleAssignment(BaseModel):
         nullable=False,
         comment="User ID"
     )
-    tenant_id: Mapped[Optional[PyUUID]] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.tenants.id', ondelete='CASCADE'), 
-        nullable=True,
-        comment="Tenant ID (for TENANT scope roles)"
-    )
-    community_id: Mapped[Optional[PyUUID]] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.communities.id', ondelete='CASCADE'), 
-        nullable=True,
-        comment="Community ID (for COMMUNITY scope roles)"
-    )
 
     # Constraints and schema
     __table_args__ = (
-        # Unique assignment per role/user/context
-        UniqueConstraint('role_id', 'user_id', 'tenant_id', 'community_id', name='uq_role_assignment'),
-
-        # Indexes for performance
-        Index('idx_roleass_user', 'user_id'),
-        Index('idx_roleass_tenant', 'tenant_id'),
-        Index('idx_roleass_community', 'community_id'),
-        Index('idx_roleass_role', 'role_id'),
-        
+        UniqueConstraint('role_id', 'user_id', name='uq_system_role_assignment'),
+        Index('idx_system_roleass_user', 'user_id'),
+        Index('idx_system_roleass_role', 'role_id'),
         {'schema': SCHEMA}
     )
 
     # Relationships
-    role: Mapped[Role] = relationship("Role", back_populates="role_assignments")
-    user: Mapped[User] = relationship("User", back_populates="role_assignments")
-    tenant: Mapped[Optional["Tenant"]] = relationship(
-        "Tenant", 
-        foreign_keys=[tenant_id]
-    )
-    community: Mapped[Optional["Community"]] = relationship(
-        "Community", 
-        foreign_keys=[community_id]
-    )
+    role: Mapped[Role] = relationship("Role", back_populates="system_assignments")
+    user: Mapped[User] = relationship("User", back_populates="system_role_assignments")
 
     def __repr__(self) -> str:
-        context = ""
-        if self.tenant_id:
-            context += f", tenant_id={self.tenant_id}"
-        if self.community_id:
-            context += f", community_id={self.community_id}"
-        return f"RoleAssignment(id={self.id}, role_id={self.role_id}, user_id={self.user_id}{context})"
+        return f"SystemRoleAssignment(id={self.id}, role_id={self.role_id}, user_id={self.user_id})"
+
+
+class TenantRoleAssignment(SoftDeleteBaseModel):
+    """
+    Tenant-level role assignments (municipal_user, municipal_admin).
+
+    INSTITUTIONAL EMAIL REQUIREMENT:
+    Municipal roles require a verified institutional email matching the tenant's domain.
+    This should be enforced by application logic or database trigger:
+
+    CREATE OR REPLACE FUNCTION enforce_tenant_email()
+    RETURNS trigger AS $$
+    BEGIN
+      -- Check if user has verified institutional email for this tenant
+      PERFORM 1
+      FROM tenants t
+      JOIN user_emails e ON e.user_id = NEW.user_id
+      WHERE t.id = NEW.tenant_id
+        AND e.verified_at IS NOT NULL
+        AND e.email_type = 'institutional'
+        AND lower(split_part(e.email, '@', 2)) = lower(t.domain);
+
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'Verified institutional email required for municipal roles';
+      END IF;
+      
+      RETURN NEW;
+    END; $$ LANGUAGE plpgsql;
+    """
+
+    __tablename__ = 'tenant_role_assignments'
+
+    role_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.roles.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="Role ID"
+    )
+    user_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="User ID"
+    )
+    tenant_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.tenants.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="Tenant ID"
+    )
+
+    # Constraints and schema
+    __table_args__ = (
+        UniqueConstraint('role_id', 'user_id', 'tenant_id', name='uq_tenant_role_assignment'),
+        Index('idx_tenant_roleass_user', 'user_id'),
+        Index('idx_tenant_roleass_tenant', 'tenant_id'),
+        Index('idx_tenant_roleass_role', 'role_id'),
+        {'schema': SCHEMA}
+    )
+
+    # Relationships
+    role: Mapped[Role] = relationship("Role", back_populates="tenant_assignments")
+    user: Mapped[User] = relationship("User", back_populates="tenant_role_assignments")
+    tenant: Mapped["Tenant"] = relationship("Tenant", foreign_keys=[tenant_id])
+
+    def __repr__(self) -> str:
+        return f"TenantRoleAssignment(id={self.id}, role_id={self.role_id}, user_id={self.user_id}, tenant_id={self.tenant_id})"
+
+
+class CommunityRoleAssignment(SoftDeleteBaseModel):
+    """Community-level role assignments (member, moderator)."""
+
+    __tablename__ = 'community_role_assignments'
+
+    role_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.roles.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="Role ID"
+    )
+    user_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="User ID"
+    )
+    community_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.communities.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="Community ID"
+    )
+
+    # Constraints and schema
+    __table_args__ = (
+        UniqueConstraint('role_id', 'user_id', 'community_id', name='uq_community_role_assignment'),
+        Index('idx_community_roleass_user', 'user_id'),
+        Index('idx_community_roleass_community', 'community_id'),
+        Index('idx_community_roleass_role', 'role_id'),
+        {'schema': SCHEMA}
+    )
+
+    # Relationships
+    role: Mapped[Role] = relationship("Role", back_populates="community_assignments")
+    user: Mapped[User] = relationship("User", back_populates="community_role_assignments")
+    community: Mapped["Community"] = relationship("Community", foreign_keys=[community_id])
+
+    def __repr__(self) -> str:
+        return f"CommunityRoleAssignment(id={self.id}, role_id={self.role_id}, user_id={self.user_id}, community_id={self.community_id})"
