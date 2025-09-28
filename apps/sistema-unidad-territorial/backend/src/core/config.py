@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from functools import lru_cache
 from os import getenv, path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -35,6 +35,24 @@ class GoogleOAuthSettings(BaseModel):
     client_secret: str
     redirect_uri: str
     scope: str = "openid email profile"
+
+
+class GoogleMapsSettings(BaseModel):
+    """Google Maps API settings."""
+    api_key: Optional[str] = Field(default=None, description="Google Maps API Key")
+    enable_validation: bool = Field(default=False, description="Habilitar validación de direcciones con Google Maps")
+    timeout_seconds: int = Field(default=10, description="Timeout para requests a Google Maps API")
+
+
+class FileSettings(BaseModel):
+    """File storage specific settings."""
+    upload_directory: str = Field(default="uploads", description="Directorio base para archivos subidos")
+    base_url: str = Field(default="/files", description="URL base para servir archivos")
+    max_file_size: int = Field(default=10 * 1024 * 1024, description="Tamaño máximo de archivo en bytes")
+    allowed_extensions: list[str] = Field(
+        default=[".jpg", ".jpeg", ".png", ".pdf"], 
+        description="Extensiones de archivo permitidas"
+    )
 
 
 class DatabaseSettings(BaseModel):
@@ -78,6 +96,8 @@ class Settings(BaseSettings):
     migrations: MigrationSettings = MigrationSettings()
     api: APISettings
     google_oauth: GoogleOAuthSettings
+    google_maps: GoogleMapsSettings = Field(default_factory=GoogleMapsSettings)
+    files: FileSettings = Field(default_factory=FileSettings)
 
     @classmethod
     def get_database_settings(cls, environment: str) -> dict[str, Any]:
@@ -130,6 +150,11 @@ def get_settings(env_loader: EnvironmentLoader = DotEnvLoader()) -> Settings:
             client_id=getenv("GOOGLE_OAUTH_CLIENT_ID"),
             client_secret=getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
             redirect_uri=getenv("GOOGLE_OAUTH_REDIRECT_URI"),
+        ),
+        google_maps=GoogleMapsSettings(
+            api_key=getenv("GOOGLE_MAPS_API_KEY"),
+            enable_validation=getenv("GOOGLE_MAPS_ENABLE_VALIDATION", "false").lower() == "true",
+            timeout_seconds=int(getenv("GOOGLE_MAPS_TIMEOUT_SECONDS", "10"))
         )
     )
 
