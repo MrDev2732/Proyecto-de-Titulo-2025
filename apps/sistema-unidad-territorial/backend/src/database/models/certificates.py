@@ -24,11 +24,11 @@ class Certificate(TenantBaseModel):
     __tablename__ = 'certificates'
 
     # Basic relationships
-    resident_id: Mapped[UUID] = Column(
+    user_id: Mapped[UUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.residents.id', ondelete='RESTRICT'), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='RESTRICT'), 
         nullable=False,
-        comment="Resident ID for the certificate"
+        comment="User ID for the certificate"
     )
     approver_id: Mapped[Optional[UUID]] = Column(
         UUID(as_uuid=True), 
@@ -84,7 +84,7 @@ class Certificate(TenantBaseModel):
     )
 
     # Relationships
-    resident: Mapped["Resident"] = relationship("Resident", back_populates="certificates")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
     approver: Mapped[Optional["User"]] = relationship("User", foreign_keys=[approver_id])
 
     def __repr__(self) -> str:
