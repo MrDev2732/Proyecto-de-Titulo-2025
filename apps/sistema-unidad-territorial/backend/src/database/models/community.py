@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID as PyUUID
 
 from sqlalchemy import (
@@ -16,16 +16,17 @@ from sqlalchemy.dialects.postgresql import UUID, CITEXT
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import BaseModel
+from src.database.models.base import BaseModel, SoftDeleteBaseModel
 from src.database.enums import (
     MembershipStatus,
     RegistrationStatus,
     RegistrationProvider,
-    AttachmentKind
+    AttachmentKind,
+    BoardRole
 )
 
 
-class Community(BaseModel):
+class Community(SoftDeleteBaseModel):
     """Community model (Juntas Vecinales) under Municipalities (Tenants)."""
 
     __tablename__ = 'communities'
@@ -70,10 +71,10 @@ class Community(BaseModel):
         back_populates="community",
         cascade="all, delete-orphan"
     )
-    # Role assignments via unified system
+    # Role assignments for this community
     role_assignments = relationship(
-        "RoleAssignment",
-        foreign_keys="RoleAssignment.community_id",
+        "CommunityRoleAssignment",
+        foreign_keys="CommunityRoleAssignment.community_id",
         back_populates="community"
     )
 
@@ -81,8 +82,20 @@ class Community(BaseModel):
         return f"Community(id={self.id}, name={self.name}, tenant_id={self.tenant_id})"
 
 
-class ResidentMembership(BaseModel):
-    """Formal membership linking residents to communities."""
+class ResidentMembership(SoftDeleteBaseModel):
+    """
+    Formal membership linking users to communities.
+
+    MULTI-TENANT SUPPORT:
+    - Users can have multiple memberships across different communities/tenants
+    - Always filter by community_id or tenant_id in queries to avoid context mixing
+    - Board roles are community-specific (user can be president in one, member in another)
+
+    Example:
+        # Juan lives in both Recoleta and Maipú
+        juan_recoleta = ResidentMembership(user_id=juan_id, community_id=recoleta_id, board_role=BoardRole.PRESIDENT)
+        juan_maipu = ResidentMembership(user_id=juan_id, community_id=maipu_id, board_role=None)
+    """
 
     __tablename__ = 'resident_memberships'
 
@@ -115,12 +128,21 @@ class ResidentMembership(BaseModel):
         nullable=True,
         comment="Verification timestamp"
     )
+    board_role: Mapped[Optional[BoardRole]] = Column(
+        Enum(BoardRole, name='board_role_enum', values_callable=lambda obj: [e.value for e in obj]),
+        nullable=True,
+        comment="Board role if member is part of community governance"
+    )
 
     # Constraints and schema
     __table_args__ = (
         UniqueConstraint('user_id', 'community_id', name='uq_membership_user_community'),
+        # Partial unique index to ensure only one person per board role per community (except vocal)
+        Index('idx_membership_unique_board_role', 'community_id', 'board_role', unique=True,
+              postgresql_where="board_role IS NOT NULL AND board_role != 'vocal'"),
         Index('idx_membership_community_status', 'community_id', 'status'),
         Index('idx_membership_user', 'user_id'),
+        Index('idx_membership_board', 'community_id', 'board_role'),
         {'schema': SCHEMA}
     )
 
@@ -135,8 +157,19 @@ class ResidentMembership(BaseModel):
         back_populates="memberships"
     )
 
+    @property
+    def is_board_member(self) -> bool:
+        """Check if this membership includes a board role."""
+        return self.board_role is not None
+
+    @property
+    def is_executive_board_member(self) -> bool:
+        """Check if this is an executive board role (president, secretary, treasurer)."""
+        return self.board_role is not None and self.board_role.is_executive
+
     def __repr__(self) -> str:
-        return f"ResidentMembership(id={self.id}, user_id={self.user_id}, community_id={self.community_id}, status={self.status})"
+        board_info = f", board_role={self.board_role.value}" if self.board_role else ""
+        return f"ResidentMembership(id={self.id}, user_id={self.user_id}, community_id={self.community_id}, status={self.status}{board_info})"
 
 
 class RegistrationRequest(BaseModel):
