@@ -12,6 +12,9 @@ from src.database.repositories.community_repository import (
     ResidentMembershipRepository,
     RegistrationRequestRepository,
 )
+from src.database.repositories.resident_repository import (
+    AddressEvidenceRepository,
+)
 from src.database.repositories.login_gating_repository import LoginGatingRepository
 
 
@@ -24,5 +27,6 @@ __all__ = [
     "CommunityRepository",
     "ResidentMembershipRepository", 
     "RegistrationRequestRepository",
+    "AddressEvidenceRepository",
     "LoginGatingRepository"
 ]
