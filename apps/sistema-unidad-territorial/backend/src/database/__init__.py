@@ -11,7 +11,7 @@ SCHEMA = 'sistema_unidad_territorial'
 from src.database.models import *
 from src.database.enums import *
 
-from src.database.utils import DatabaseSetup
+from src.database.utils import *
 
 
 # Export everything
@@ -61,9 +61,8 @@ __all__ = [
     "NotificationStatus",
     "NotificationType",
 
-    # Timezone utilities
-    "now_chile",
-
     # Utilities
+    "now_chile",
     "DatabaseSetup",
+    "RutChile",
 ]
