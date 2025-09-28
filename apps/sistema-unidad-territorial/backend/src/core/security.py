@@ -5,13 +5,15 @@ Módulo de seguridad para JWT, encriptación de contraseñas y tokens.
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Union
 from uuid import UUID
+import secrets
+import string
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from src.core.config import settings
 from src.core.logging import get_logger
-from src.database.timezone_utils import now_chile
+from src.database import now_chile
 from src.schemas.auth_schemas import TokenData
 
 
@@ -32,6 +34,44 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         bool: True si las contraseñas coinciden
     """
     return pwd_context.verify(plain_password, hashed_password)
+
+
+def generate_secure_password(length: int = 12) -> str:
+    """
+    Generar una contraseña aleatoria y segura.
+
+    Args:
+        length: Longitud de la contraseña (mínimo 8)
+
+    Returns:
+        str: Contraseña generada
+    """
+    if length < 8:
+        length = 8
+
+    # Definir caracteres permitidos
+    lowercase = string.ascii_lowercase
+    uppercase = string.ascii_uppercase
+    digits = string.digits
+    special_chars = "!@#$%^&*"
+
+    # Asegurar al menos un carácter de cada tipo
+    password = [
+        secrets.choice(lowercase),
+        secrets.choice(uppercase),
+        secrets.choice(digits),
+        secrets.choice(special_chars)
+    ]
+
+    # Completar el resto de la contraseña
+    all_chars = lowercase + uppercase + digits + special_chars
+    for _ in range(length - 4):
+        password.append(secrets.choice(all_chars))
+
+    # Mezclar la contraseña
+    secrets.SystemRandom().shuffle(password)
+
+    return ''.join(password)
 
 
 def get_password_hash(password: str) -> str:
