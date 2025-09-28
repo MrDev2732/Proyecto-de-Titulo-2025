@@ -11,6 +11,7 @@ from src.database.enums.community_status import (
     AttachmentKind,
     RoleScope,
 )
+from src.database.enums.board_roles import BoardRole
 
 
 __all__ = [
@@ -44,4 +45,5 @@ __all__ = [
     "RegistrationProvider",
     "AttachmentKind",
     "RoleScope",
+    "BoardRole",
 ]
