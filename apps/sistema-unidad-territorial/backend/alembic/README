@@ -1,1 +1,5 @@
-Generic single-database configuration.
+Generar nueva revisión
+poetry run alembic -n sistema_unidad_territorial_dev revision --autogenerate -m "mensaje"
+
+Aplicar una nueva migración
+poetry run alembic -n sistema_unidad_territorial_dev upgrade head
