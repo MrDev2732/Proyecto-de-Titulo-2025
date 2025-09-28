@@ -26,7 +26,9 @@ class RegistrationProvider(str, Enum):
 
 class AttachmentKind(str, Enum):
     """Types of attachments for registration requests."""
-    UTILITY_BILL = "utility_bill"
+    ID_CARD_FRONT = "id_card_front"  # Foto frontal del carnet
+    ID_CARD_BACK = "id_card_back"    # Foto trasera del carnet
+    UTILITY_BILL = "utility_bill"    # Foto de cuenta (luz, agua, etc.)
     RENT_CONTRACT = "rent_contract"
     OTHER = "other"
 
@@ -36,3 +38,4 @@ class RoleScope(str, Enum):
     GLOBAL = "GLOBAL"
     TENANT = "TENANT"
     COMMUNITY = "COMMUNITY"
+    SYSTEM = "SYSTEM"
