@@ -5,7 +5,10 @@ Integración de triggers para alertas automáticas y análisis de seguridad.
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.core.logging import get_logger
+from src.database.views.auth_views import AUTH_VIEWS_SQL
+
 
 logger = get_logger(__name__)
 
@@ -18,86 +21,17 @@ class AuthenticationTriggers:
         """
         Crear vistas operativas para authentication_log.
 
+        Note: Views are now managed centrally in src.database.views module.
+        This method is kept for backward compatibility but delegates to the views module.
+
         Args:
             session: Sesión de base de datos
         """
         try:
-            # Vista para fallos de autenticación en las últimas 24 horas
-            view_auth_failures_24h = text("""
-                CREATE OR REPLACE VIEW v_auth_failures_24h AS
-                SELECT 
-                    tenant_id, 
-                    email, 
-                    ip, 
-                    provider, 
-                    method, 
-                    failure_reason, 
-                    error_code,
-                    risk_score,
-                    geo_country,
-                    user_agent,
-                    created_at
-                FROM sistema_unidad_territorial.authentication_log
-                WHERE result = 'FAIL' 
-                  AND created_at >= now() - INTERVAL '24 hours'
-                ORDER BY created_at DESC;
-            """)
-
-            # Vista para análisis de rate limiting por IP
-            view_rate_limit_analysis = text("""
-                CREATE OR REPLACE VIEW v_auth_rate_limit_analysis AS
-                SELECT 
-                    ip,
-                    COUNT(*) as total_attempts,
-                    SUM(CASE WHEN result = 'FAIL' THEN 1 ELSE 0 END) as failed_attempts,
-                    SUM(CASE WHEN result = 'SUCCESS' THEN 1 ELSE 0 END) as success_attempts,
-                    ROUND(
-                        SUM(CASE WHEN result = 'FAIL' THEN 1 ELSE 0 END)::numeric / COUNT(*)::numeric * 100, 
-                        2
-                    ) as failure_rate_percent,
-                    MIN(created_at) as first_attempt,
-                    MAX(created_at) as last_attempt,
-                    COUNT(DISTINCT email) as unique_emails,
-                    COUNT(DISTINCT user_id) as unique_users,
-                    array_agg(DISTINCT geo_country) FILTER (WHERE geo_country IS NOT NULL) as countries,
-                    AVG(risk_score) FILTER (WHERE risk_score IS NOT NULL) as avg_risk_score
-                FROM sistema_unidad_territorial.authentication_log
-                WHERE created_at >= now() - INTERVAL '24 hours'
-                GROUP BY ip
-                HAVING COUNT(*) >= 5  -- Solo IPs con al menos 5 intentos
-                ORDER BY failed_attempts DESC, total_attempts DESC;
-            """)
-
-            # Vista para análisis de usuarios sospechosos
-            view_suspicious_users = text("""
-                CREATE OR REPLACE VIEW v_suspicious_auth_users AS
-                SELECT 
-                    u.id as user_id,
-                    u.email,
-                    u.status,
-                    COUNT(al.id) as total_auth_attempts,
-                    SUM(CASE WHEN al.result = 'FAIL' THEN 1 ELSE 0 END) as failed_attempts,
-                    COUNT(DISTINCT al.ip) as unique_ips,
-                    COUNT(DISTINCT al.geo_country) as unique_countries,
-                    AVG(al.risk_score) FILTER (WHERE al.risk_score IS NOT NULL) as avg_risk_score,
-                    MAX(al.created_at) as last_attempt,
-                    array_agg(DISTINCT al.failure_reason) 
-                        FILTER (WHERE al.failure_reason IS NOT NULL) as failure_reasons
-                FROM sistema_unidad_territorial.users u
-                JOIN sistema_unidad_territorial.authentication_log al ON u.id = al.user_id
-                WHERE al.created_at >= now() - INTERVAL '7 days'
-                GROUP BY u.id, u.email, u.status
-                HAVING 
-                    SUM(CASE WHEN al.result = 'FAIL' THEN 1 ELSE 0 END) >= 10  -- 10+ fallos
-                    OR COUNT(DISTINCT al.ip) >= 5  -- 5+ IPs diferentes
-                    OR COUNT(DISTINCT al.geo_country) >= 3  -- 3+ países diferentes
-                ORDER BY failed_attempts DESC, unique_ips DESC;
-            """)
-
-            # Ejecutar creación de vistas
-            await session.execute(view_auth_failures_24h)
-            await session.execute(view_rate_limit_analysis)
-            await session.execute(view_suspicious_users)
+            # Create auth-related views
+            for view_name, sql in AUTH_VIEWS_SQL.items():
+                await session.execute(text(sql))
+                logger.info(f"✅ Created auth view: {view_name}")
 
             logger.info("Vistas de authentication_log creadas exitosamente")
 
