@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
+from uuid import UUID as PyUUID
 
 from sqlalchemy import (
     Column,
@@ -14,16 +15,21 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import TenantBaseModel
+from src.database.models.base import BaseModel
 from src.database.enums import ReservationStatus
 
 
-class Space(TenantBaseModel):
+class Space(BaseModel):
     """Reservable space model."""
 
     __tablename__ = 'spaces'
-    __table_args__ = {'schema': SCHEMA}
 
+    community_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.communities.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="Community ID that owns this space"
+    )
     name: Mapped[str] = Column(
         Text, 
         nullable=False,
@@ -35,7 +41,14 @@ class Space(TenantBaseModel):
         comment="Space description"
     )
 
+    # Constraints and schema
+    __table_args__ = (
+        Index('idx_space_community', 'community_id'),
+        {'schema': SCHEMA}
+    )
+
     # Relationships
+    community: Mapped["Community"] = relationship("Community", foreign_keys=[community_id])
     reservations: Mapped[List["Reservation"]] = relationship(
         "Reservation",
         back_populates="space",
@@ -46,23 +59,23 @@ class Space(TenantBaseModel):
         return f"Space(id={self.id}, name={self.name})"
 
 
-class Reservation(TenantBaseModel):
+class Reservation(BaseModel):
     """Space reservation model."""
 
     __tablename__ = 'reservations'
 
     # Relationships
-    space_id: Mapped[UUID] = Column(
+    space_id: Mapped[PyUUID] = Column(
         UUID(as_uuid=True), 
         ForeignKey(f'{SCHEMA}.spaces.id', ondelete='CASCADE'), 
         nullable=False,
         comment="Space ID for the reservation"
     )
-    requesting_resident_id: Mapped[UUID] = Column(
+    requesting_user_id: Mapped[PyUUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.residents.id', ondelete='RESTRICT'), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='RESTRICT'), 
         nullable=False,
-        comment="Resident ID who made the reservation"
+        comment="User ID who made the reservation"
     )
 
     # Time information
@@ -95,7 +108,7 @@ class Reservation(TenantBaseModel):
         ),
         # Indexes for optimizing queries
         Index('idx_reservation_space_start', 'space_id', 'start_time'),
-        Index('idx_reservation_resident', 'requesting_resident_id'),
+        Index('idx_reservation_user', 'requesting_user_id'),
         # EXCLUDE constraint for preventing overlaps
         # Note: This requires btree_gist extension in PostgreSQL
         # ExcludeConstraint is better handled at application level or via direct SQL
@@ -104,7 +117,7 @@ class Reservation(TenantBaseModel):
 
     # Relationships
     space: Mapped[Space] = relationship("Space", back_populates="reservations")
-    requesting_resident: Mapped["Resident"] = relationship("Resident", back_populates="reservations")
+    requesting_user: Mapped["User"] = relationship("User", foreign_keys=[requesting_user_id])
 
     def __repr__(self) -> str:
         return (
