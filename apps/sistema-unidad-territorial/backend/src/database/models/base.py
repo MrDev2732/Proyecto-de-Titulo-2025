@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped
 from sqlalchemy.sql import func
 
 from src.database import Base
-from src.database.timezone_utils import now_chile
+from src.database.utils import now_chile
 
 
 class UUIDMixin:
@@ -64,6 +64,37 @@ class TenantMixin:
         )
 
 
+class SoftDeleteMixin:
+    """Mixin that provides soft delete functionality."""
+
+    @declared_attr
+    def deleted_at(cls) -> Mapped[Optional[datetime]]:
+        return Column(
+            DateTime(timezone=True),
+            nullable=True,
+            index=True,
+            comment="Soft delete timestamp - NULL means active"
+        )
+
+    @property
+    def is_deleted(self) -> bool:
+        """Check if the record is soft deleted."""
+        return self.deleted_at is not None
+
+    @property
+    def is_active(self) -> bool:
+        """Check if the record is active (not soft deleted)."""
+        return self.deleted_at is None
+
+    def soft_delete(self) -> None:
+        """Mark the record as soft deleted."""
+        self.deleted_at = now_chile()
+
+    def restore(self) -> None:
+        """Restore a soft deleted record."""
+        self.deleted_at = None
+
+
 class BaseModel(Base, UUIDMixin, TimestampMixin):
     """Base model that includes UUID primary key and timestamps."""
 
@@ -99,8 +130,50 @@ class BaseModel(Base, UUIDMixin, TimestampMixin):
         return f"{self.__class__.__name__}({attrs})"
 
 
+class SoftDeleteBaseModel(BaseModel, SoftDeleteMixin):
+    """Base model with soft delete support."""
+
+    __abstract__ = True
+
+
 class TenantBaseModel(BaseModel, TenantMixin):
     """Base model with multi-tenant support."""
+
+    __abstract__ = True
+
+    async def get_tenant_data_async(self, session, include_tenant_info: bool = False) -> Dict[str, Any]:
+        """
+        Get model data with optional tenant information.
+
+        Args:
+            session: Async database session
+            include_tenant_info: Whether to include tenant information
+
+        Returns:
+            Dictionary with model data and optionally tenant info
+        """
+        data = self.to_dict()
+
+        if include_tenant_info and self.tenant_id:
+            from sqlalchemy import select
+            from src.database.models.system import Tenant
+
+            result = await session.execute(
+                select(Tenant).where(Tenant.id == self.tenant_id)
+            )
+            tenant = result.scalar_one_or_none()
+
+            if tenant:
+                data['tenant_info'] = {
+                    'id': tenant.id,
+                    'name': tenant.name
+                }
+
+        return data
+
+
+class TenantSoftDeleteModel(BaseModel, TenantMixin, SoftDeleteMixin):
+    """Base model with multi-tenant and soft delete support."""
 
     __abstract__ = True
 
