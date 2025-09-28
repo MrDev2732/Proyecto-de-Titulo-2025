@@ -1,4 +1,5 @@
 from typing import List, Optional
+from uuid import UUID as PyUUID
 
 from sqlalchemy import (
     Column,
@@ -12,21 +13,27 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import TenantBaseModel
+from src.database.models.base import BaseModel
 from src.database.enums import ProjectStatus
 
 
-class Project(TenantBaseModel):
+class Project(BaseModel):
     """Community project model."""
 
     __tablename__ = 'projects'
 
     # Relationships
-    requesting_resident_id: Mapped[UUID] = Column(
+    community_id: Mapped[PyUUID] = Column(
         UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.residents.id', ondelete='RESTRICT'), 
+        ForeignKey(f'{SCHEMA}.communities.id', ondelete='CASCADE'), 
         nullable=False,
-        comment="Resident ID who requested the project"
+        comment="Community ID where the project is proposed"
+    )
+    requesting_user_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='RESTRICT'), 
+        nullable=False,
+        comment="User ID who requested the project"
     )
 
     # Project information
@@ -61,11 +68,14 @@ class Project(TenantBaseModel):
             name='ck_project_status'
         ),
         Index('idx_project_status_created', 'status', 'created_at'),
+        Index('idx_project_community', 'community_id'),
+        Index('idx_project_user', 'requesting_user_id'),
         {'schema': SCHEMA}
     )
 
     # Relationships
-    requesting_resident: Mapped["Resident"] = relationship("Resident", back_populates="projects")
+    community: Mapped["Community"] = relationship("Community", foreign_keys=[community_id])
+    requesting_user: Mapped["User"] = relationship("User", foreign_keys=[requesting_user_id])
     attachments: Mapped[List["ProjectAttachment"]] = relationship(
         "ProjectAttachment",
         back_populates="project",
@@ -77,14 +87,13 @@ class Project(TenantBaseModel):
         return f"Project(id={self.id}, title={title_preview}, status={self.status})"
 
 
-class ProjectAttachment(TenantBaseModel):
+class ProjectAttachment(BaseModel):
     """Project attachment model."""
 
     __tablename__ = 'project_attachments'
-    __table_args__ = {'schema': SCHEMA}
 
     # Relationships
-    project_id: Mapped[UUID] = Column(
+    project_id: Mapped[PyUUID] = Column(
         UUID(as_uuid=True), 
         ForeignKey(f'{SCHEMA}.projects.id', ondelete='CASCADE'), 
         nullable=False,
@@ -102,6 +111,9 @@ class ProjectAttachment(TenantBaseModel):
         nullable=False, 
         comment="Type of the attachment file"
     )
+
+    # Constraints and schema
+    __table_args__ = {'schema': SCHEMA}
 
     # Relationships
     project: Mapped[Project] = relationship("Project", back_populates="attachments")
