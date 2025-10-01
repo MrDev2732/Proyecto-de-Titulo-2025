@@ -47,6 +47,8 @@ readme = 'README.md'
   asyncpg = "^0.30.0"
   requests = "^2.32.4"
   aiohttp = "^3.12.15"
+  reportlab = "^4.4.4"
+  pypdf2 = "^3.0.1"
 
   [tool.poetry.group.dev.dependencies]
   autopep8 = "2.3.1"
