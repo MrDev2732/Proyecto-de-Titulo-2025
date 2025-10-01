@@ -55,6 +55,27 @@ class FileSettings(BaseModel):
     )
 
 
+class EmailSettings(BaseModel):
+    """Email configuration settings."""
+    smtp_server: str = Field(default="smtp.gmail.com", description="Servidor SMTP")
+    smtp_port: int = Field(default=587, description="Puerto SMTP")
+    smtp_username: Optional[str] = Field(default=None, description="Usuario SMTP (email)")
+    smtp_password: Optional[str] = Field(default=None, description="Contraseña SMTP (contraseña de aplicación)")
+    from_email: Optional[str] = Field(default=None, description="Email remitente")
+    from_name: str = Field(default="Sistema Unidad Territorial", description="Nombre del remitente")
+    use_tls: bool = Field(default=True, description="Usar TLS")
+    enabled: bool = Field(default=False, description="Habilitar envío de emails")
+
+    @property
+    def is_configured(self) -> bool:
+        """Verificar si el email está configurado correctamente."""
+        return all([
+            self.smtp_username,
+            self.smtp_password,
+            self.from_email
+        ])
+
+
 class DatabaseSettings(BaseModel):
     """Database connection settings."""
     user: str
@@ -98,6 +119,7 @@ class Settings(BaseSettings):
     google_oauth: GoogleOAuthSettings
     google_maps: GoogleMapsSettings = Field(default_factory=GoogleMapsSettings)
     files: FileSettings = Field(default_factory=FileSettings)
+    email: EmailSettings = Field(default_factory=EmailSettings)
 
     @classmethod
     def get_database_settings(cls, environment: str) -> dict[str, Any]:
@@ -155,6 +177,13 @@ def get_settings(env_loader: EnvironmentLoader = DotEnvLoader()) -> Settings:
             api_key=getenv("GOOGLE_MAPS_API_KEY"),
             enable_validation=getenv("GOOGLE_MAPS_ENABLE_VALIDATION", "false").lower() == "true",
             timeout_seconds=int(getenv("GOOGLE_MAPS_TIMEOUT_SECONDS", "10"))
+        ),
+        email=EmailSettings(
+            smtp_username=getenv("SMTP_USERNAME"),
+            smtp_password=getenv("SMTP_PASSWORD"),
+            from_email=getenv("SMTP_FROM_EMAIL"),
+            from_name=getenv("SMTP_FROM_NAME", "Sistema Unidad Territorial"),
+            enabled=getenv("SMTP_ENABLED", "false").lower() == "true"
         )
     )
 
