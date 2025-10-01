@@ -18,7 +18,6 @@ from src.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-
 class GoogleMapsService:
     """Servicio para integración con Google Maps API."""
 

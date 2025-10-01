@@ -20,6 +20,8 @@ from src.schemas.community_schemas import (
     TenantsAndCommunitiesResponse,
     TenantListResponse,
     CommunitiesByTenantResponse,
+    ManualRegistrationRequest,
+    ManualRegistrationResponse,
 )
 from src.schemas.auth_schemas import ErrorResponse
 from src.core.dependencies import get_current_active_user, require_community_access, require_registration_request_access
@@ -35,6 +37,7 @@ from src.services.community_service import CommunityService
 from src.services.file_service import FileService
 from src.services.registration_approval_service import RegistrationApprovalService
 from src.services.google_maps_service import GoogleMapsService
+from src.services.email import EmailService
 from src.core.logging import get_logger
 
 
@@ -423,6 +426,7 @@ async def approve_registration_request(
     5. Se asocian las evidencias de la solicitud al residente
     6. Se crea una membresía para el usuario en la comunidad
     7. Se registra quién y cuándo aprobó la solicitud
+    8. Se envía email de notificación de aprobación al solicitante
     """
     # La validación de permisos ya se hizo en la dependencia
     # Usar el servicio para manejar toda la lógica de aprobación
@@ -434,6 +438,27 @@ async def approve_registration_request(
     )
 
     await session.commit()
+
+    # Enviar email de notificación de aprobación (para usuarios existentes)
+    try:
+        community = await CommunityRepository.get_community_by_id(session, approved_request.community_id)
+        community_name = community.name if community else "Comunidad"
+
+        email_sent = await EmailService.send_registration_decision_email(
+            to_email=approved_request.email,
+            full_name=approved_request.full_name or "Usuario",
+            community_name=community_name,
+            approved=True,
+            notes=decision_data.decision_notes
+        )
+
+        if email_sent:
+            logger.info(f"📧 Approval notification email sent to {approved_request.email}")
+        else:
+            logger.warning(f"⚠️ Failed to send approval notification email to {approved_request.email}")
+
+    except Exception as e:
+        logger.error(f"❌ Error sending approval notification email: {e}")
 
     logger.info(f"✅ Approved registration request {request_id} by {current_user.email}")
 
@@ -466,7 +491,8 @@ async def reject_registration_request(
     1. La dependencia valida automáticamente permisos sobre la comunidad
     2. Se actualiza el estado de la solicitud a REJECTED
     3. Se registra quién y cuándo rechazó la solicitud
-    4. El usuario no podrá acceder al sistema
+    4. Se envía email de notificación de rechazo al solicitante
+    5. El usuario no podrá acceder al sistema
     """
     # La validación de permisos ya se hizo en la dependencia
     rejected_request = await RegistrationRequestRepository.reject_registration_request(
@@ -477,6 +503,27 @@ async def reject_registration_request(
     )
 
     await session.commit()
+
+    # Enviar email de notificación de rechazo
+    try:
+        community = await CommunityRepository.get_community_by_id(session, rejected_request.community_id)
+        community_name = community.name if community else "Comunidad"
+
+        email_sent = await EmailService.send_registration_decision_email(
+            to_email=rejected_request.email,
+            full_name=rejected_request.full_name or "Usuario",
+            community_name=community_name,
+            approved=False,
+            notes=decision_data.decision_notes
+        )
+
+        if email_sent:
+            logger.info(f"📧 Rejection notification email sent to {rejected_request.email}")
+        else:
+            logger.warning(f"⚠️ Failed to send rejection notification email to {rejected_request.email}")
+
+    except Exception as e:
+        logger.error(f"❌ Error sending rejection notification email: {e}")
 
     logger.info(f"❌ Rejected registration request {request_id} by {current_user.email}")
 
@@ -503,3 +550,168 @@ async def get_my_memberships(
     )
 
     return [ResidentMembershipResponse.model_validate(membership) for membership in memberships]
+
+
+@router.post(
+    "/{community_id}/manual-registration",
+    response_model=ManualRegistrationResponse,
+    summary="Registrar manualmente a un vecino",
+    description="Permite a moderadores/admins registrar directamente a un vecino sin pasar por el proceso de solicitud con documentos",
+    responses={
+        400: {"model": ErrorResponse, "description": "Usuario ya tiene membresía o datos inválidos"},
+        403: {"model": ErrorResponse, "description": "Sin permisos para registrar vecinos"},
+        404: {"model": ErrorResponse, "description": "Comunidad no encontrada"},
+        422: {"model": ErrorResponse, "description": "Datos de entrada inválidos"}
+    }
+)
+async def register_resident_manually(
+    community_id: UUID,
+    registration_data: ManualRegistrationRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(require_community_access)
+) -> ManualRegistrationResponse:
+    """
+    Registrar manualmente a un vecino sin pasar por el proceso de solicitud.
+
+    **Solo usuarios con permisos específicos pueden usar este endpoint:**
+    - SUPERADMIN (acceso global)
+    - ADMIN del tenant que contiene la comunidad  
+    - MODERATOR específicamente de esta comunidad
+
+    **Proceso de registro manual:**
+    1. Valida los datos del vecino (email, nombre, RUT, dirección)
+    2. Verifica que la comunidad existe y el moderador tiene permisos
+    3. Busca si el usuario ya existe o crea uno nuevo con contraseña temporal
+    4. Verifica que no tenga membresía previa en la comunidad
+    5. Crea la membresía directamente en estado APPROVED y verificada
+    6. Registra quién realizó el registro manual
+
+    **Datos requeridos:**
+    - **community_id** (en URL): ID de la comunidad donde registrar
+    - **email**: Email del vecino
+    - **full_name**: Nombre completo
+    - **rut**: RUT chileno válido
+    - **address**: Dirección del vecino
+    - **notes**: Notas opcionales del moderador
+
+    **Respuesta incluye:**
+    - Información del usuario y membresía creados
+    - Contraseña temporal si es usuario nuevo (solo para logging, no en producción)
+    - Información de la comunidad
+    - ID del moderador que realizó el registro
+    """
+    # ========================================
+    # VALIDACIONES DE DATOS DE ENTRADA
+    # ========================================
+
+    # Validar email
+    email_valid, email_error = ValidationUtils.validate_email(registration_data.email)
+    if not email_valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Email inválido: {email_error}"
+        )
+
+    # Validar nombre completo
+    name_valid, name_error = ValidationUtils.validate_full_name(registration_data.full_name)
+    if not name_valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Nombre inválido: {name_error}"
+        )
+
+    # Validar RUT
+    rut_valid, formatted_rut, rut_error = RutChile.validate_rut(registration_data.rut)
+    if not rut_valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"RUT inválido: {rut_error}"
+        )
+
+    # Validar dirección
+    address_valid, address_error = ValidationUtils.validate_address(registration_data.address)
+    if not address_valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Dirección inválida: {address_error}"
+        )
+
+    # Validación adicional con Google Maps (si está habilitada)
+    try:
+        maps_valid, maps_details = await GoogleMapsService.validate_address_in_chile(registration_data.address)
+        if not maps_valid and maps_details.get("status") not in ["API_KEY_NOT_CONFIGURED", "QUERY_LIMIT_EXCEEDED"]:
+            logger.warning(f"Google Maps validation failed for address: {registration_data.address} - {maps_details.get('message')}")
+            # No bloquear el registro, solo logear la advertencia
+    except Exception as e:
+        logger.error(f"Error en validación de Google Maps: {e}")
+        # Continuar sin bloquear el registro
+
+    # Normalizar datos validados
+    email = registration_data.email.strip().lower()
+    full_name = registration_data.full_name.strip()
+    rut = formatted_rut  # Usar el RUT formateado correctamente
+    address = registration_data.address.strip()
+
+    logger.info(f"📋 Validación exitosa para registro manual: {email}, RUT: {rut} por {current_user.email}")
+
+    # ========================================
+    # VERIFICACIONES DE COMUNIDAD Y PERMISOS
+    # ========================================
+
+    # Obtener información de la comunidad
+    community = await CommunityRepository.get_community_by_id(session, community_id)
+    if not community:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comunidad no encontrada"
+        )
+
+    # Los permisos ya fueron validados por la dependencia require_community_access
+    # que verifica que el usuario tenga acceso a esta comunidad específica
+
+    # ========================================
+    # REGISTRO MANUAL DEL VECINO
+    # ========================================
+
+    try:
+        # Usar el servicio para manejar toda la lógica de registro manual
+        user, membership_id, temporary_password = await RegistrationApprovalService.register_resident_manually(
+            session=session,
+            community_id=community_id,
+            email=email,
+            full_name=full_name,
+            rut=rut,
+            address=address,
+            registered_by=current_user.id,
+            notes=registration_data.notes
+        )
+
+        await session.commit()
+
+        logger.info(f"✅ Manual registration completed for {email} in community {community_id} by {current_user.email}")
+
+        # Construir respuesta
+        response = ManualRegistrationResponse(
+            user_id=user.id,
+            membership_id=membership_id,
+            email=email,
+            full_name=full_name,
+            rut=rut,
+            address=address,
+            community=CommunityResponse.model_validate(community),
+            registered_by=current_user.id,
+            temporary_password=temporary_password,  # Solo para desarrollo/logging
+            created_at=user.created_at
+        )
+
+        return response
+
+    except HTTPException:
+        # Re-lanzar HTTPExceptions del servicio
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in manual registration: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor durante el registro manual"
+        )

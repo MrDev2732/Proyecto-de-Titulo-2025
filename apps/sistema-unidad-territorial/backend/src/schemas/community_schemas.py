@@ -137,3 +137,29 @@ class CommunitiesByTenantResponse(BaseModel):
     tenant: TenantResponse = Field(..., description="Información del tenant")
     communities: List[CommunityResponse] = Field(..., description="Comunidades del tenant")
     total: int = Field(..., description="Total de comunidades")
+
+
+class ManualRegistrationRequest(BaseModel):
+    """Request schema para registro manual de vecinos por moderadores/admins."""
+    email: EmailStr = Field(..., description="Email del vecino")
+    full_name: str = Field(..., description="Nombre completo del vecino")
+    rut: str = Field(..., description="RUT del vecino")
+    address: str = Field(..., description="Dirección del vecino")
+    notes: Optional[str] = Field(None, description="Notas del moderador sobre el registro")
+
+
+class ManualRegistrationResponse(BaseModel):
+    """Response schema para registro manual de vecinos."""
+    user_id: UUID = Field(..., description="ID del usuario creado/encontrado")
+    membership_id: UUID = Field(..., description="ID de la membresía creada")
+    email: str = Field(..., description="Email del vecino")
+    full_name: str = Field(..., description="Nombre completo del vecino")
+    rut: str = Field(..., description="RUT del vecino")
+    address: str = Field(..., description="Dirección del vecino")
+    community: CommunityResponse = Field(..., description="Información de la comunidad")
+    registered_by: UUID = Field(..., description="ID del moderador que registró al vecino")
+    temporary_password: Optional[str] = Field(None, description="Contraseña temporal generada (solo si es usuario nuevo)")
+    created_at: datetime = Field(..., description="Fecha de registro")
+
+    class Config:
+        from_attributes = True
