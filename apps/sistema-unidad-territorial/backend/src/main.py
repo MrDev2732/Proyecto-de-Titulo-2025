@@ -9,7 +9,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.core.config import settings
 from src.core.logging import configure_logging, get_logger
 from src.api.auth import router as auth_router
-from src.api.community import router as community_router
+from src.api.tenant import router as tenant_router
+from src.api.registration import router as registration_router
+from src.api.membership import router as membership_router
+from src.api.certificate import router as certificate_router
 from src.api.files import router as files_router
 from src.api.email import router as email_router
 from src.core.middleware import SessionTrackingMiddleware, AuthLoggingMiddleware
@@ -136,7 +139,10 @@ async def log_requests(request: Request, call_next):
 
 # Incluir routers
 app.include_router(auth_router, prefix=settings.api.v1_str)
-app.include_router(community_router, prefix=settings.api.v1_str)
+app.include_router(tenant_router, prefix=settings.api.v1_str)
+app.include_router(registration_router, prefix=settings.api.v1_str)
+app.include_router(membership_router, prefix=settings.api.v1_str)
+app.include_router(certificate_router, prefix=settings.api.v1_str)
 app.include_router(files_router)
 app.include_router(email_router, prefix=settings.api.v1_str)
 

@@ -6,11 +6,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 
-from src.core.config import get_settings
+from src.core.config import settings
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
-settings = get_settings()
 
 # Router para endpoints de archivos
 router = APIRouter(prefix="/files", tags=["Archivos"])

@@ -163,3 +163,22 @@ class ManualRegistrationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CertificateRequest(BaseModel):
+    """Request schema para generar certificado de residencia."""
+    save_to_file: bool = Field(default=False, description="Si guardar el certificado en archivo")
+
+
+class CertificateResponse(BaseModel):
+    """Response schema para certificado de residencia generado."""
+    certificate_number: str = Field(..., description="Número del certificado")
+    issue_date: datetime = Field(..., description="Fecha de emisión")
+    resident_name: str = Field(..., description="Nombre del residente")
+    resident_rut: str = Field(..., description="RUT del residente")
+    community_name: str = Field(..., description="Nombre de la comunidad")
+    file_size: int = Field(..., description="Tamaño del archivo en bytes")
+    file_path: Optional[str] = Field(None, description="Ruta del archivo guardado (si se guardó)")
+
+    class Config:
+        from_attributes = True

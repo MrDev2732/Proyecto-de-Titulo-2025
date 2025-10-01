@@ -1,5 +1,5 @@
 """
-Endpoints de comunidades y solicitudes de registro para la API.
+Endpoints de solicitudes de registro para la API.
 """
 
 from typing import List, Optional, Union
@@ -10,30 +10,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.session import get_db_session
 from src.schemas.community_schemas import (
-    CommunityResponse,
     RegistrationRequestResponse,
     RegistrationRequestListResponse,
     RegistrationRequestDecision,
-    ResidentMembershipResponse,
-    TenantResponse,
-    TenantWithCommunitiesResponse,
-    TenantsAndCommunitiesResponse,
-    TenantListResponse,
-    CommunitiesByTenantResponse,
     ManualRegistrationRequest,
     ManualRegistrationResponse,
+    CommunityResponse,
 )
 from src.schemas.auth_schemas import ErrorResponse
-from src.core.dependencies import get_current_active_user, require_community_access, require_registration_request_access
+from src.core.dependencies import require_community_access, require_registration_request_access
 from src.database import User
 from src.database.repositories.community_repository import (
     CommunityRepository,
     RegistrationRequestRepository,
-    ResidentMembershipRepository,
 )
 from src.database.repositories.tenant_repository import TenantRepository
 from src.database.utils import ValidationUtils, RutChile
-from src.services.community_service import CommunityService
 from src.services.file_service import FileService
 from src.services.registration_approval_service import RegistrationApprovalService
 from src.services.google_maps_service import GoogleMapsService
@@ -43,105 +35,12 @@ from src.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Router para endpoints de comunidades
-router = APIRouter(prefix="/communities", tags=["Comunidades"])
-
-
-@router.get(
-    "/tenants-and-communities",
-    response_model=TenantsAndCommunitiesResponse,
-    summary="Obtener estructura completa de tenants y comunidades",
-    description="Retorna todos los tenants activos con sus comunidades activas (para frontend)"
-)
-async def get_tenants_and_communities(
-    session: AsyncSession = Depends(get_db_session),
-) -> TenantsAndCommunitiesResponse:
-    """
-    Obtener la estructura completa de tenants y comunidades activas.
-
-    Útil para que el frontend pueda mostrar un selector de municipalidades
-    y sus respectivas juntas de vecinos.
-    """
-    tenants_with_communities = await CommunityService.get_available_tenants_and_communities(session)
-
-    result_tenants = []
-    total_communities = 0
-
-    for tenant, communities in tenants_with_communities:
-        tenant_response = TenantWithCommunitiesResponse(
-            tenant=TenantResponse.model_validate(tenant),
-            communities=[CommunityResponse.model_validate(community) for community in communities],
-            total_communities=len(communities)
-        )
-        result_tenants.append(tenant_response)
-        total_communities += len(communities)
-
-    return TenantsAndCommunitiesResponse(
-        tenants=result_tenants,
-        total_tenants=len(result_tenants),
-        total_communities=total_communities
-    )
-
-
-@router.get(
-    "/tenants",
-    response_model=TenantListResponse,
-    summary="Listar todos los tenants",
-    description="Obtiene todos los tenants (municipalidades) activos del sistema"
-)
-async def list_tenants(
-    session: AsyncSession = Depends(get_db_session),
-) -> TenantListResponse:
-    """
-    Listar todos los tenants activos del sistema.
-
-    Retorna todas las municipalidades disponibles para que el usuario
-    pueda seleccionar en qué municipalidad quiere registrarse.
-    """
-    tenants = await TenantRepository.get_all_active_tenants(session)
-
-    return TenantListResponse(
-        tenants=[TenantResponse.model_validate(tenant) for tenant in tenants],
-        total=len(tenants)
-    )
-
-
-@router.get(
-    "/tenants/{tenant_id}/communities",
-    response_model=CommunitiesByTenantResponse,
-    summary="Listar comunidades de un tenant específico",
-    description="Obtiene todas las comunidades activas de una municipalidad específica"
-)
-async def list_communities_by_tenant(
-    tenant_id: UUID,
-    session: AsyncSession = Depends(get_db_session),
-) -> CommunitiesByTenantResponse:
-    """
-    Listar todas las comunidades activas de un tenant específico.
-
-    Permite al usuario ver todas las juntas de vecinos disponibles
-    en una municipalidad específica para poder elegir dónde registrarse.
-    """
-    # Verificar que el tenant existe
-    tenant = await TenantRepository.get_tenant_by_id(session, tenant_id)
-    if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant no encontrado"
-        )
-
-    # Obtener comunidades activas del tenant
-    communities = await CommunityRepository.get_active_communities_by_tenant(session, tenant_id)
-
-    return CommunitiesByTenantResponse(
-        tenant=TenantResponse.model_validate(tenant),
-        communities=[CommunityResponse.model_validate(community) for community in communities],
-        total=len(communities)
-    )
+# Router para endpoints de solicitudes de registro
+router = APIRouter(prefix="/registration", tags=["Solicitudes de Registro"])
 
 
 @router.post(
-    "/registration-requests",
+    "/requests",
     response_model=RegistrationRequestResponse,
     summary="Crear solicitud de registro a comunidad con documentos",
     description="Crea una nueva solicitud de registro para unirse a una comunidad específica con documentos adjuntos",
@@ -362,7 +261,7 @@ async def create_registration_request(
 
 
 @router.get(
-    "/{community_id}/registration-requests",
+    "/communities/{community_id}/requests",
     response_model=RegistrationRequestListResponse,
     summary="Listar solicitudes de registro de una comunidad",
     description="Obtiene todas las solicitudes de registro pendientes para una comunidad (solo usuarios con permisos específicos)",
@@ -397,7 +296,7 @@ async def list_community_registration_requests(
 
 
 @router.post(
-    "/registration-requests/{request_id}/approve",
+    "/requests/{request_id}/approve",
     response_model=RegistrationRequestResponse,
     summary="Aprobar solicitud de registro",
     description="Aprueba una solicitud de registro y crea la membresía del usuario",
@@ -466,7 +365,7 @@ async def approve_registration_request(
 
 
 @router.post(
-    "/registration-requests/{request_id}/reject",
+    "/requests/{request_id}/reject",
     response_model=RegistrationRequestResponse,
     summary="Rechazar solicitud de registro",
     description="Rechaza una solicitud de registro con notas del moderador",
@@ -530,30 +429,8 @@ async def reject_registration_request(
     return RegistrationRequestResponse.model_validate(rejected_request)
 
 
-@router.get(
-    "/my-memberships",
-    response_model=List[ResidentMembershipResponse],
-    summary="Obtener mis membresías de comunidades",
-    description="Retorna todas las membresías aprobadas del usuario actual"
-)
-async def get_my_memberships(
-    session: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_active_user)
-) -> List[ResidentMembershipResponse]:
-    """
-    Obtener las membresías de comunidades del usuario actual.
-
-    Retorna solo las membresías en estado APPROVED.
-    """
-    memberships = await ResidentMembershipRepository.get_user_approved_memberships(
-        session, current_user.id
-    )
-
-    return [ResidentMembershipResponse.model_validate(membership) for membership in memberships]
-
-
 @router.post(
-    "/{community_id}/manual-registration",
+    "/communities/{community_id}/manual-registration",
     response_model=ManualRegistrationResponse,
     summary="Registrar manualmente a un vecino",
     description="Permite a moderadores/admins registrar directamente a un vecino sin pasar por el proceso de solicitud con documentos",
