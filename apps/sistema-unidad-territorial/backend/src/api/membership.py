@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.session import get_db_session
-from src.schemas.community_schemas import ResidentMembershipResponse
+from src.schemas import ResidentMembershipResponse
 from src.core.dependencies import get_current_active_user
 from src.database import User
-from src.database.repositories.community_repository import ResidentMembershipRepository
+from src.database.repositories import ResidentMembershipRepository
 from src.core.logging import get_logger
 
 
