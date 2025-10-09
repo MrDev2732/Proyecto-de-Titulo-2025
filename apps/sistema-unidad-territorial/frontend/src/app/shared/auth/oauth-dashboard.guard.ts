@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { Router, ActivatedRouteSnapshot } from '@angular/router';
 import { AuthService } from './auth.service';
+import { analyzeUserRoles } from './role.utils';
 
 /**
  * Helper functions para manejar cookies
@@ -59,7 +60,17 @@ export const oauthDashboardGuard = (route: ActivatedRouteSnapshot) => {
 				auth.currentUser.set(null);
 			}
 
-			// No necesitamos redirigir, ya estamos en el dashboard correcto
+			// Verificar si el usuario tiene privilegios de admin
+			const user = auth.currentUser();
+			const roleInfo = analyzeUserRoles(user);
+
+			// Si no tiene privilegios de admin, redirigir al dashboard de residente
+			if (!roleInfo.hasAdminPrivileges) {
+				router.navigateByUrl('/resident-dashboard');
+				return false;
+			}
+
+			// Usuario admin, puede acceder al dashboard administrativo
 			return true;
 		} catch (error) {
 			console.error('Error procesando tokens OAuth:', error);
@@ -72,10 +83,20 @@ export const oauthDashboardGuard = (route: ActivatedRouteSnapshot) => {
 
 	// Verificación normal de autenticación
 	if (auth.isAuthenticated()) {
+		// Verificar si el usuario tiene privilegios de admin
+		const user = auth.currentUser();
+		const roleInfo = analyzeUserRoles(user);
+
+		// Si no tiene privilegios de admin, redirigir al dashboard de residente
+		if (!roleInfo.hasAdminPrivileges) {
+			router.navigateByUrl('/resident-dashboard');
+			return false;
+		}
+
 		return true;
 	}
 
 	// No autenticado, redirigir al login
-	router.navigateByUrl('/auth/admin-login');
+	router.navigateByUrl('/signin');
 	return false;
 };
