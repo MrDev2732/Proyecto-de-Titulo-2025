@@ -1,4 +1,4 @@
-export interface LoginRequestDto {
+export interface SigninRequestDto {
 	email: string;
 	password: string;
 	remember?: boolean;
@@ -26,4 +26,38 @@ export interface TokenResponseDto {
 	token_type: string;
 	expires_in: number;
 	user: UserResponseDto;
+}
+
+// ========================================
+// INTERFACES PARA RECUPERACIÓN DE CONTRASEÑA
+// ========================================
+export interface PasswordResetRequestDto {
+	email: string;
+}
+
+export interface PasswordResetResponseDto {
+	message: string;
+	reset_token_id: string;
+	expires_in_minutes: number;
+}
+
+export interface PasswordResetCodeValidationRequestDto {
+	email: string;
+	code: string;
+}
+
+export interface PasswordResetCodeValidationResponseDto {
+	message: string;
+	reset_token_id: string;
+	expires_at: string;
+}
+
+export interface PasswordResetConfirmRequestDto {
+	reset_token: string;
+	new_password: string;
+	confirm_password: string;
+}
+
+export interface PasswordResetConfirmResponseDto {
+	message: string;
 }
