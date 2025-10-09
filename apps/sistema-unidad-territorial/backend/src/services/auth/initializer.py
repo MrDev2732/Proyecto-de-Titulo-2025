@@ -9,8 +9,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.repositories import AuthRepository, RoleRepository
-from src.database.repositories.community_repository import (
+from src.database.repositories import (
+    AuthRepository,
+    RoleRepository,
     CommunityRepository,
     ResidentMembershipRepository,
 )
