@@ -20,7 +20,7 @@ from src.database.repositories import (
     CommunityRepository,
     ResidentMembershipRepository,
 )
-from src.services.certificate_service import CertificateService
+from src.services.certificate import CertificateService
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
