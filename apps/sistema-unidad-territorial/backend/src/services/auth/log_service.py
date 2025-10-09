@@ -5,18 +5,18 @@ Integra el logging robusto de autenticación con análisis de riesgo
 y decisiones de seguridad automáticas.
 """
 
-from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.repositories.auth_log_repository import AuthenticationLogRepository
+from src.database.repositories import AuthenticationLogRepository
 from src.database.auth_security_utils import create_security_analyzer
 from src.database.enums import AuthProvider, AuthMethod, AuthResult, AuthFailureReason
 from src.database import User, UserSession
 from src.core.logging import get_logger
+
 
 logger = get_logger(__name__)
 
