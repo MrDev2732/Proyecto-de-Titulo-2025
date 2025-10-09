@@ -1,19 +1,11 @@
 # Esquemas Pydantic para validación de datos
 
-from src.schemas.auth_schemas import (
-    LoginRequest,
-    TokenResponse,
-    RefreshTokenRequest,
-    UserCreateRequest,
-    UserResponse,
-    TokenData,
-    GoogleOAuthRequest,
-    OAuthUserInfo,
-    ErrorResponse,
-    RoleResponse
-)
+from src.schemas.auth import *
+from src.schemas.community import *
+
 
 __all__ = [
+    # Auth schemas
     "LoginRequest",
     "TokenResponse",
     "RefreshTokenRequest", 
@@ -23,5 +15,18 @@ __all__ = [
     "GoogleOAuthRequest",
     "OAuthUserInfo", 
     "ErrorResponse",
-    "RoleResponse"
+    "RoleResponse",
+    # Password Reset schemas
+    "PasswordResetRequest",
+    "PasswordResetResponse",
+    "PasswordResetCodeValidationRequest",
+    "PasswordResetCodeValidationResponse",
+    "PasswordResetConfirmRequest",
+    "PasswordResetConfirmResponse",
+    "PasswordResetConfirmationRequest",
+    "PasswordResetConfirmationResponse",
+    "PasswordResetTokenInfo",
+    # Community schemas
+    "RegistrationRequestResponse"
+    "CertificateRequest"
 ]
