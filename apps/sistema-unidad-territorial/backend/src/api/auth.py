@@ -3,29 +3,28 @@ Endpoints de autenticación para la API.
 """
 
 from typing import Dict, Optional
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.dependencies import get_current_active_user, require_admin
+from src.core.logging import get_logger
+from src.core.security import verify_token
+from src.database.models import User
+from src.database.repositories import AuthenticationLogRepository
 from src.database.session import get_db_session
-from src.schemas.auth_schemas import (
+from src.schemas import (
+    ErrorResponse,
     LoginRequest,
-    TokenResponse,
     RefreshTokenRequest,
+    TokenResponse,
     UserCreateRequest,
     UserResponse,
-    ErrorResponse
 )
 from src.services.auth import AuthService, GoogleOAuthService
-from src.core.security import verify_token
-from src.core.dependencies import get_current_active_user, require_admin
-from src.database import User
-from src.database.repositories.auth_repository import AuthRepository
-from src.database.repositories.auth_log_repository import AuthenticationLogRepository
-from src.core.logging import get_logger
 
 
 logger = get_logger(__name__)
@@ -77,7 +76,7 @@ def get_client_ip(request: Request) -> Optional[str]:
 
 
 @router.post(
-    "/login",
+    "/signin",
     response_model=TokenResponse,
     summary="Iniciar sesión con email y contraseña",
     description="Autentica un usuario con sus credenciales y devuelve tokens JWT",
@@ -419,8 +418,17 @@ async def google_oauth_callback(
             "roles": [{"id": str(role.id), "name": role.name} for role in user_response.roles]
         }
 
+        # Determinar la ruta de redirección basada en roles
+        role_names = [role.name.upper() for role in user_response.roles]
+        has_admin_privileges = any(role in role_names for role in ["ADMIN", "SUPERADMIN", "MODERATOR"])
+
+        if has_admin_privileges:
+            redirect_url = f"{frontend_redirect}admin-dashboard"
+        else:
+            redirect_url = f"{frontend_redirect}resident-dashboard"
+
         # Crear respuesta de redirección
-        response = RedirectResponse(url=frontend_redirect, status_code=302)
+        response = RedirectResponse(url=redirect_url, status_code=302)
 
         # Establecer cookies seguras con los tokens (solo para desarrollo local)
         # En producción usar httponly=True, secure=True
