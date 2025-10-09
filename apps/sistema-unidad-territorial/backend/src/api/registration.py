@@ -9,25 +9,25 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.session import get_db_session
-from src.schemas.community_schemas import (
+from src.schemas import (
     RegistrationRequestResponse,
     RegistrationRequestListResponse,
     RegistrationRequestDecision,
     ManualRegistrationRequest,
     ManualRegistrationResponse,
     CommunityResponse,
+    ErrorResponse
 )
-from src.schemas.auth_schemas import ErrorResponse
-from src.core.dependencies import require_community_access, require_registration_request_access
-from src.database import User
-from src.database.repositories.community_repository import (
+from src.core.dependencies import require_community_access, require_registration_request_access, get_current_active_user
+from src.database.models import User
+from src.database.repositories import (
     CommunityRepository,
     RegistrationRequestRepository,
+    TenantRepository
 )
-from src.database.repositories.tenant_repository import TenantRepository
 from src.database.utils import ValidationUtils, RutChile
 from src.services.file_service import FileService
-from src.services.registration_approval_service import RegistrationApprovalService
+from src.services.registration_approval import RegistrationApprovalService
 from src.services.google_maps_service import GoogleMapsService
 from src.services.email import EmailService
 from src.core.logging import get_logger
@@ -258,6 +258,124 @@ async def create_registration_request(
         FileService.cleanup_evidence_directory(request_id)
         logger.error(f"❌ Error creating registration request: {e}")
         raise e
+
+
+@router.get(
+    "/requests",
+    response_model=RegistrationRequestListResponse,
+    summary="Listar todas las solicitudes de registro según permisos del usuario",
+    description="Obtiene todas las solicitudes de registro de las comunidades a las que el usuario tiene acceso",
+    responses={
+        403: {"model": ErrorResponse, "description": "Sin permisos para ver solicitudes"},
+    }
+)
+async def list_all_registration_requests(
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 20,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_active_user)
+) -> RegistrationRequestListResponse:
+    """
+    Listar todas las solicitudes de registro según los permisos del usuario actual.
+
+    **Permisos y acceso:**
+    - **SUPERADMIN**: Ve todas las solicitudes del sistema
+    - **ADMIN del tenant**: Ve solicitudes de todas las comunidades de su municipalidad
+    - **MODERATOR de comunidad**: Ve solo solicitudes de sus comunidades específicas
+
+    **Parámetros de filtrado:**
+    - **status**: Filtrar por estado (PENDING, APPROVED, REJECTED)
+    - **search**: Buscar por email, nombre o RUT
+    - **page**: Número de página (default: 1)
+    - **per_page**: Elementos por página (default: 20, max: 100)
+
+    Retorna todas las solicitudes accesibles con sus adjuntos, paginadas.
+    """
+    # Validar parámetros
+    if per_page > 100:
+        per_page = 100
+    if page < 1:
+        page = 1
+
+    # Obtener solicitudes con filtros según permisos del usuario
+    requests = await RegistrationRequestRepository.get_requests_for_user(
+        session=session,
+        user_id=current_user.id,
+        status=status,
+        search=search,
+        page=page,
+        per_page=per_page
+    )
+
+    return RegistrationRequestListResponse(
+        requests=[RegistrationRequestResponse.model_validate(req) for req in requests],
+        total=len(requests)  # TODO: Implementar conteo total real en el repository
+    )
+
+
+@router.get(
+    "/requests/{request_id}",
+    response_model=RegistrationRequestResponse,
+    summary="Obtener detalles de una solicitud de registro",
+    description="Obtiene los detalles completos de una solicitud de registro específica",
+    responses={
+        403: {"model": ErrorResponse, "description": "Sin permisos para ver esta solicitud"},
+        404: {"model": ErrorResponse, "description": "Solicitud no encontrada"}
+    }
+)
+async def get_registration_request_details(
+    request_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(require_registration_request_access)
+) -> RegistrationRequestResponse:
+    """
+    Obtener detalles completos de una solicitud de registro.
+
+    Requiere permisos de acceso a la solicitud específica.
+    """
+    try:
+        logger.info(f"🔍 Getting request details for ID: {request_id} by user: {current_user.email}")
+
+        # Obtener la solicitud con todos sus detalles y archivos adjuntos
+        request = await RegistrationRequestRepository.get_by_id_with_attachments(
+            session=session, 
+            request_id=request_id
+        )
+
+        if not request:
+            logger.warning(f"❌ Request not found: {request_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Solicitud de registro no encontrada"
+            )
+
+        logger.info(f"✅ Request details retrieved for ID: {request_id}, attachments: {len(request.attachments)}")
+
+        # Log de las URLs de los attachments para debugging
+        for i, attachment in enumerate(request.attachments):
+            logger.info(f"🔍 Attachment {i+1}: kind={attachment.kind}, url={attachment.url}")
+
+        response = RegistrationRequestResponse.model_validate(request)
+        logger.info(f"🔍 Response created with {len(response.attachments)} attachments")
+
+        # Log de las URLs en la respuesta
+        for i, attachment in enumerate(response.attachments):
+            logger.info(f"🔍 Response attachment {i+1}: kind={attachment.kind}, url={attachment.url}")
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error retrieving request details for ID {request_id}: {e}")
+        logger.error(f"❌ Exception type: {type(e)}")
+        logger.error(f"❌ Exception args: {e.args}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor al obtener detalles de la solicitud"
+        )
 
 
 @router.get(
