@@ -1,7 +1,17 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { LoginRequestDto, TokenResponseDto, UserResponseDto } from './auth.models';
+import { 
+	SigninRequestDto, 
+	TokenResponseDto, 
+	UserResponseDto,
+	PasswordResetRequestDto,
+	PasswordResetResponseDto,
+	PasswordResetCodeValidationRequestDto,
+	PasswordResetCodeValidationResponseDto,
+	PasswordResetConfirmRequestDto,
+	PasswordResetConfirmResponseDto
+} from './auth.models';
 
 const ACCESS_KEY = 'sut.access';
 const REFRESH_KEY = 'sut.refresh';
@@ -10,12 +20,17 @@ const REFRESH_KEY = 'sut.refresh';
 export class AuthService {
 	private readonly http = inject(HttpClient);
 	private readonly baseUrl = '/api/v1/auth';
+	private readonly passwordResetUrl = '/api/v1/password-reset';
 
 	isAuthenticated = signal<boolean>(false);
 	currentUser = signal<UserResponseDto | null>(null);
 
 	constructor() {
 		this.restore();
+	}
+
+	getAccessToken(): string | null {
+		return localStorage.getItem(ACCESS_KEY) ?? sessionStorage.getItem(ACCESS_KEY);
 	}
 
 	private restore(): void {
@@ -29,9 +44,9 @@ export class AuthService {
 		}
 	}
 
-	async login(req: LoginRequestDto): Promise<void> {
+	async signin(req: SigninRequestDto): Promise<void> {
 		const res = await firstValueFrom(
-			this.http.post<TokenResponseDto>(`${this.baseUrl}/login`, {
+			this.http.post<TokenResponseDto>(`${this.baseUrl}/signin`, {
 				email: req.email,
 				password: req.password,
 			})
@@ -62,10 +77,6 @@ export class AuthService {
 		this.currentUser.set(null);
 	}
 
-	getAccessToken(): string | null {
-		return localStorage.getItem(ACCESS_KEY) ?? sessionStorage.getItem(ACCESS_KEY);
-	}
-
 	private persistTokens(res: TokenResponseDto, remember: boolean): void {
 		const storage = remember ? localStorage : sessionStorage;
 		storage.setItem(ACCESS_KEY, res.access_token);
@@ -80,5 +91,52 @@ export class AuthService {
 			localStorage.removeItem(REFRESH_KEY);
 			localStorage.removeItem('sut.user');
 		}
+	}
+
+	// ========================================
+	// MÉTODOS PARA RECUPERACIÓN DE CONTRASEÑA
+	// ========================================
+
+	/**
+	 * Solicita un código de recuperación de contraseña
+	 * @param email Email del usuario
+	 * @returns Respuesta con información del token de reset
+	 */
+	async requestPasswordReset(email: string): Promise<PasswordResetResponseDto> {
+		const request: PasswordResetRequestDto = { email };
+		return await firstValueFrom(
+			this.http.post<PasswordResetResponseDto>(`${this.passwordResetUrl}/request`, request)
+		);
+	}
+
+	/**
+	 * Valida el código de recuperación de contraseña
+	 * @param email Email del usuario
+	 * @param code Código de 6 dígitos recibido por email
+	 * @returns Token para cambiar contraseña
+	 */
+	async validateResetCode(email: string, code: string): Promise<PasswordResetCodeValidationResponseDto> {
+		const request: PasswordResetCodeValidationRequestDto = { email, code };
+		return await firstValueFrom(
+			this.http.post<PasswordResetCodeValidationResponseDto>(`${this.passwordResetUrl}/validate`, request)
+		);
+	}
+
+	/**
+	 * Confirma el cambio de contraseña
+	 * @param email Email del usuario
+	 * @param code Código de 6 dígitos recibido por email
+	 * @param newPassword Nueva contraseña
+	 * @returns Confirmación del cambio
+	 */
+	async confirmPasswordReset(email: string, code: string, newPassword: string): Promise<PasswordResetConfirmResponseDto> {
+		const request = { 
+			email: email,
+			code: code,
+			new_password: newPassword
+		};
+		return await firstValueFrom(
+			this.http.post<PasswordResetConfirmResponseDto>(`${this.passwordResetUrl}/confirm`, request)
+		);
 	}
 }

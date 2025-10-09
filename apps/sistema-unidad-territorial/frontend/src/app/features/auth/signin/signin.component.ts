@@ -4,8 +4,9 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { Router } from '@angular/router';
 import { AuthService } from '../../../shared/auth/auth.service';
 import { HttpErrorResponse } from '@angular/common/http';
+import { PasswordResetModalComponent } from '../../../shared/components/password-reset-modal.component';
 
-interface LoginFormGroup {
+interface SigninFormGroup {
 	email: FormControl<string>;
 	password: FormControl<string>;
 	remember: FormControl<boolean>;
@@ -16,21 +17,22 @@ function isErrorWithMessage(value: unknown): value is { message?: string } {
 }
 
 @Component({
-	selector: 'app-login',
+	selector: 'app-signin',
 	standalone: true,
-	imports: [CommonModule, ReactiveFormsModule],
-	templateUrl: './login.component.html',
-	styleUrl: './login.component.scss',
+	imports: [CommonModule, ReactiveFormsModule, PasswordResetModalComponent],
+	templateUrl: './signin.component.html',
+	styleUrl: './signin.component.scss',
 })
-export class LoginComponent {
+export class SigninComponent {
 	private readonly auth = inject(AuthService);
 	private readonly router = inject(Router);
 
 	isSubmitting = signal(false);
 	errorMessage = signal<string | null>(null);
 	passwordVisible = signal(false);
+	showPasswordResetModal = signal(false);
 
-	form = new FormGroup<LoginFormGroup>({
+	form = new FormGroup<SigninFormGroup>({
 		email: new FormControl<string>('', { nonNullable: true, validators: [Validators.required, Validators.email] }),
 		password: new FormControl<string>('', { nonNullable: true, validators: [Validators.required] }),
 		remember: new FormControl<boolean>(true, { nonNullable: true }),
@@ -45,7 +47,7 @@ export class LoginComponent {
 		this.isSubmitting.set(true);
 		try {
 			const { email, password, remember } = this.form.getRawValue();
-			await this.auth.login({ email, password, remember });
+			await this.auth.signin({ email, password, remember });
 			await this.router.navigateByUrl('/admin-dashboard');
 		} catch (err: unknown) {
 			let msg = 'No se pudo iniciar sesión';
@@ -75,7 +77,19 @@ export class LoginComponent {
 		this.passwordVisible.update((v) => !v);
 	}
 
-		loginWithGoogle(): void {
+	navigateToSignup(): void {
+		this.router.navigateByUrl('/signup');
+	}
+
+	openPasswordResetModal(): void {
+		this.showPasswordResetModal.set(true);
+	}
+
+	closePasswordResetModal(): void {
+		this.showPasswordResetModal.set(false);
+	}
+
+		signinWithGoogle(): void {
 		// Solución temporal: El backend redirigirá al frontend después del OAuth
 		const frontendDashboard = `${window.location.origin}/admin-dashboard`;
 

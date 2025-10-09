@@ -184,7 +184,7 @@
 								</div>
 								<span class="group-hover:text-municipal-green transition-colors">Mantener sesión activa</span>
 							</label>
-							<a class="text-sm font-medium text-municipal-green hover:text-municipal-dark hover:underline transition-all duration-200 flex items-center gap-1" href="#" (click)="$event.preventDefault()">
+							<a class="text-sm font-medium text-municipal-green hover:text-municipal-dark hover:underline transition-all duration-200 flex items-center gap-1 cursor-pointer" (click)="openPasswordResetModal()">
 								<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
 									<path d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z"/>
 								</svg>
@@ -246,7 +246,7 @@
 					<!-- Botón Google Workspace Premium -->
 					<button 
 						type="button" 
-						(click)="loginWithGoogle()"
+						(click)="signinWithGoogle()"
 						class="group w-full inline-flex items-center justify-center gap-4 rounded-2xl border-2 border-municipal-light/50 bg-gradient-to-r from-white to-municipal-bg/20 hover:from-municipal-bg/30 hover:to-white px-6 py-4 text-municipal-dark hover:text-municipal-green font-semibold transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-municipal-green/20 disabled:opacity-60 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
 						[disabled]="isSubmitting()"
 					>
@@ -303,9 +303,38 @@
 								24/7 Disponible
 							</span>
 						</div>
+
+						<!-- Sección para vecinos -->
+						<div class="mt-8 pt-6 border-t border-municipal-light/30">
+							<div class="text-center space-y-4">
+								<p class="text-sm text-municipal-text font-medium">¿Eres vecino de la comunidad?</p>
+								<button 
+									type="button"
+									(click)="navigateToSignup()"
+									class="group inline-flex items-center justify-center gap-3 rounded-xl border-2 border-municipal-green/30 bg-gradient-to-r from-municipal-green/5 to-municipal-green/10 hover:from-municipal-green/10 hover:to-municipal-green/20 px-6 py-3 text-municipal-green hover:text-municipal-dark font-semibold transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-municipal-green/20 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+								>
+									<svg class="w-5 h-5 transition-transform group-hover:scale-110" fill="currentColor" viewBox="0 0 24 24">
+										<path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M11,7V13H13V7H11M11,15V17H13V15H11Z"/>
+									</svg>
+									<span>Registrarse como Vecino</span>
+									<svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="currentColor" viewBox="0 0 24 24">
+										<path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/>
+									</svg>
+								</button>
+								<p class="text-xs text-municipal-muted max-w-sm mx-auto">
+									Únete a tu junta de vecinos, participa en actividades y solicita certificados de residencia.
+								</p>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
 		</div>
 	</div>
 </section>
+
+<!-- Modal de recuperación de contraseña -->
+<app-password-reset-modal 
+	*ngIf="showPasswordResetModal()"
+	(closed)="closePasswordResetModal()"
+></app-password-reset-modal>

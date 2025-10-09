@@ -2,6 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../../shared/auth/auth.service';
+import { getDashboardRoute } from '../../../shared/auth/role.utils';
 
 @Component({
 	selector: 'app-oauth-success',
@@ -21,7 +22,7 @@ import { AuthService } from '../../../shared/auth/auth.service';
 				<div *ngIf="error" class="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
 					<p class="text-red-800 text-sm">{{ error }}</p>
 					<button 
-						(click)="redirectToLogin()"
+						(click)="redirectToSignin()"
 						class="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
 					>
 						Volver al Login
@@ -70,14 +71,18 @@ export class OAuthSuccessComponent implements OnInit {
 					this.auth.currentUser.set(null);
 				}
 
-				// Redirigir al dashboard
+				// Redirigir al dashboard apropiado según el rol
 				setTimeout(() => {
-					this.router.navigateByUrl('/admin-dashboard');
+					const user = this.auth.currentUser();
+					const dashboardRoute = getDashboardRoute(user);
+					this.router.navigateByUrl(dashboardRoute);
 				}, 1500);
 			} else {
 				// No hay tokens en la URL, verificar si ya está autenticado
 				if (this.auth.isAuthenticated()) {
-					this.router.navigateByUrl('/admin-dashboard');
+					const user = this.auth.currentUser();
+					const dashboardRoute = getDashboardRoute(user);
+					this.router.navigateByUrl(dashboardRoute);
 				} else {
 					this.error = 'No se recibieron los datos de autenticación';
 				}
@@ -101,7 +106,7 @@ export class OAuthSuccessComponent implements OnInit {
 		sessionStorage.removeItem('sut.user');
 	}
 
-	redirectToLogin(): void {
-		this.router.navigateByUrl('/auth/admin-login');
+	redirectToSignin(): void {
+		this.router.navigateByUrl('/signin');
 	}
 }

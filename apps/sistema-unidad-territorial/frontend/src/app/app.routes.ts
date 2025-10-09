@@ -1,26 +1,36 @@
 import { Route } from '@angular/router';
-import { authGuard } from './shared/auth/auth.guard';
 import { oauthDashboardGuard } from './shared/auth/oauth-dashboard.guard';
-import { LoginComponent } from './features/auth/login/login.component';
+import { authGuard } from './shared/auth/auth.guard';
+import { SigninComponent } from './features/auth/signin/signin.component';
 import { GoogleCallbackComponent } from './features/auth/google-callback/google-callback.component';
 import { OAuthSuccessComponent } from './features/auth/oauth-success/oauth-success.component';
 import { DashboardComponent } from './features/shell/dashboard.component';
+import { SignupComponent } from './features/auth/signup/signup.component';
+import { ResidentDashboardComponent } from './features/resident/resident-dashboard.component';
+
 
 export const appRoutes: Route[] = [
+	// Ruta pública de registro para vecinos
+	{ 
+		path: 'signup', 
+		component: SignupComponent,
+		data: { title: 'Registro de Vecino' }
+	},
+
 	// Redirigir raíz al login administrativo
-	{ path: '', redirectTo: '/auth/admin-login', pathMatch: 'full' },
+	{ path: '', redirectTo: '/signin', pathMatch: 'full' },
 	
 	// Rutas de autenticación para administradores
 	{
-		path: 'auth',
+		path: '',
 		children: [
 			{ 
-				path: 'admin-login', 
-				component: LoginComponent,
+				path: 'signin', 
+				component: SigninComponent,
 				data: { title: 'Panel de Administración Municipal' }
 			},
 			// Mantener compatibilidad con login genérico
-			{ path: 'login', redirectTo: 'admin-login' },
+			{ path: 'signin', redirectTo: 'signin' },
 			// Callback de Google OAuth (para configuración GCP futura)
 			{
 				path: 'google/callback',
@@ -44,9 +54,17 @@ export const appRoutes: Route[] = [
 		data: { title: 'Dashboard Administrativo' }
 	},
 
+	// Dashboard de residentes protegido
+	{ 
+		path: 'resident-dashboard', 
+		canActivate: [authGuard], 
+		component: ResidentDashboardComponent,
+		data: { title: 'Portal del Residente' }
+	},
+
 	// Compatibilidad con dashboard genérico
 	{ path: 'dashboard', redirectTo: '/admin-dashboard' },
 
 	// Redirigir rutas no encontradas al login administrativo
-	{ path: '**', redirectTo: '/auth/admin-login' },
+	{ path: '**', redirectTo: '/signin' },
 ];
