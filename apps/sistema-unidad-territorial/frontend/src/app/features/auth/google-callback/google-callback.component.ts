@@ -24,7 +24,7 @@ import { firstValueFrom } from 'rxjs';
 				<div *ngIf="error" class="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
 					<p class="text-red-800 text-sm">{{ error }}</p>
 					<button 
-						(click)="redirectToLogin()"
+						(click)="redirectToSignin()"
 						class="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
 					>
 						Volver al Login
@@ -147,7 +147,7 @@ export class GoogleCallbackComponent implements OnInit {
 		sessionStorage.removeItem('sut.user');
 	}
 
-	redirectToLogin(): void {
-		this.router.navigateByUrl('/auth/admin-login');
+	redirectToSignin(): void {
+		this.router.navigateByUrl('/signin');
 	}
 }
