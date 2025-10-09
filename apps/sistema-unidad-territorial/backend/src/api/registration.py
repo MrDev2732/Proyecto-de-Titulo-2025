@@ -26,9 +26,9 @@ from src.database.repositories import (
     TenantRepository
 )
 from src.database.utils import ValidationUtils, RutChile
-from src.services.file_service import FileService
+from src.services.file import FileService
 from src.services.registration_approval import RegistrationApprovalService
-from src.services.google_maps_service import GoogleMapsService
+from src.services.google_maps import GoogleMapsService
 from src.services.email import EmailService
 from src.core.logging import get_logger
 
