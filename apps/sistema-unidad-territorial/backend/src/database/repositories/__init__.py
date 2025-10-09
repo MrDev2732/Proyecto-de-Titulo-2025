@@ -1,21 +1,22 @@
 # Repositorios para acceso a datos
 
-from src.database.repositories.auth_repository import (
+from src.database.repositories.auth import (
     AuthRepository,
     OAuthRepository,
     SessionRepository,
 )
-from src.database.repositories.auth_log_repository import AuthenticationLogRepository
-from src.database.repositories.role_repository import RoleRepository
-from src.database.repositories.community_repository import (
+from src.database.repositories.auth_log import AuthenticationLogRepository
+from src.database.repositories.role import RoleRepository
+from src.database.repositories.community import (
     CommunityRepository,
     ResidentMembershipRepository,
     RegistrationRequestRepository,
 )
-from src.database.repositories.resident_repository import (
+from src.database.repositories.resident import (
     AddressEvidenceRepository,
 )
-from src.database.repositories.login_gating_repository import LoginGatingRepository
+from src.database.repositories.login_gating import LoginGatingRepository
+from src.database.repositories.tenant import TenantRepository
 
 
 __all__ = [
@@ -28,5 +29,6 @@ __all__ = [
     "ResidentMembershipRepository", 
     "RegistrationRequestRepository",
     "AddressEvidenceRepository",
-    "LoginGatingRepository"
+    "LoginGatingRepository",
+    "TenantRepository"
 ]

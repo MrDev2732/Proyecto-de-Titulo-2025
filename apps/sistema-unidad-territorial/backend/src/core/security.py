@@ -14,7 +14,7 @@ from passlib.context import CryptContext
 from src.core.config import settings
 from src.core.logging import get_logger
 from src.database import now_chile
-from src.schemas.auth_schemas import TokenData
+from src.schemas import TokenData
 
 
 logger = get_logger(__name__)

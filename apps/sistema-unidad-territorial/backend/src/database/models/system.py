@@ -1,6 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from uuid import UUID as PyUUID
+import secrets
+import string
 
 from sqlalchemy import (
     Column,
@@ -9,6 +11,7 @@ from sqlalchemy import (
     Text,
     Integer,
     DateTime, 
+    Boolean,
     CheckConstraint,
     Index
 )
@@ -276,3 +279,148 @@ class AuditLog(BaseModel):
 
     def __repr__(self) -> str:
         return f"AuditLog(id={self.id}, action={self.action}, entity={self.entity}, timestamp={self.timestamp})"
+
+
+class PasswordResetToken(BaseModel):
+    __tablename__ = 'password_reset_tokens'
+
+    # Usuario asociado
+    user_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="Usuario que solicita el reset"
+    )
+
+    # Código corto de 6 dígitos (user-friendly)
+    code: Mapped[str] = Column(
+        String(6), 
+        nullable=False, 
+        unique=True,
+        comment="Código de 6 dígitos para validación"
+    )
+
+    # Token seguro para URLs
+    token: Mapped[str] = Column(
+        String(64), 
+        nullable=False, 
+        unique=True,
+        comment="Token seguro para URLs de reset"
+    )
+
+    # Control de expiración y uso
+    expires_at: Mapped[datetime] = Column(
+        DateTime(timezone=True), 
+        nullable=False,
+        comment="Fecha y hora de expiración del token"
+    )
+
+    used_at: Mapped[Optional[datetime]] = Column(
+        DateTime(timezone=True), 
+        nullable=True,
+        comment="Fecha y hora cuando se usó el token"
+    )
+
+    is_used: Mapped[bool] = Column(
+        Boolean, 
+        nullable=False, 
+        default=False,
+        server_default='false',
+        comment="Indica si el token ya fue utilizado"
+    )
+
+    # Metadatos adicionales
+    ip_address: Mapped[Optional[str]] = Column(
+        INET, 
+        nullable=True,
+        comment="IP desde donde se solicitó el reset"
+    )
+
+    user_agent: Mapped[Optional[str]] = Column(
+        Text, 
+        nullable=True,
+        comment="User agent del navegador que solicitó el reset"
+    )
+
+    # Constraints e índices
+    __table_args__ = (
+        # Índice para búsquedas por código
+        Index('idx_password_reset_code', 'code'),
+        # Índice para búsquedas por token
+        Index('idx_password_reset_token', 'token'),
+        # Índice para cleanup de tokens expirados
+        Index('idx_password_reset_expires', 'expires_at'),
+        # Índice para búsquedas por usuario
+        Index('idx_password_reset_user', 'user_id', 'created_at'),
+        # Índice compuesto para validación
+        Index('idx_password_reset_validation', 'code', 'is_used', 'expires_at'),
+        {'schema': SCHEMA}
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+    @classmethod
+    def generate_code(cls) -> str:
+        """Generar código de 6 dígitos único."""
+        return ''.join(secrets.choice(string.digits) for _ in range(6))
+
+    @classmethod
+    def generate_token(cls) -> str:
+        """Generar token seguro de 64 caracteres."""
+        return secrets.token_urlsafe(48)  # 48 bytes = 64 chars en base64url
+
+    @classmethod
+    def create_for_user(
+        cls, 
+        user_id: PyUUID, 
+        expires_in_minutes: int = 15,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> "PasswordResetToken":
+        """
+        Crear nuevo token de reset para un usuario.
+
+        Args:
+            user_id: ID del usuario
+            expires_in_minutes: Minutos hasta expiración (default: 15)
+            ip_address: IP del solicitante
+            user_agent: User agent del navegador
+
+        Returns:
+            Nueva instancia de PasswordResetToken
+        """
+        now = now_chile()
+        expires_at = now + timedelta(minutes=expires_in_minutes)
+
+        return cls(
+            user_id=user_id,
+            code=cls.generate_code(),
+            token=cls.generate_token(),
+            expires_at=expires_at,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+    def is_valid(self) -> bool:
+        """Verificar si el token es válido (no usado y no expirado)."""
+        now = now_chile()
+        return not self.is_used and self.expires_at > now
+
+    def is_expired(self) -> bool:
+        """Verificar si el token ha expirado."""
+        return now_chile() > self.expires_at
+
+    def mark_as_used(self) -> None:
+        """Marcar el token como usado."""
+        self.is_used = True
+        self.used_at = now_chile()
+
+    def time_until_expiry(self) -> Optional[timedelta]:
+        """Obtener tiempo restante hasta expiración."""
+        if self.is_expired():
+            return None
+        return self.expires_at - now_chile()
+
+    def __repr__(self) -> str:
+        return f"PasswordResetToken(id={self.id}, user_id={self.user_id}, code={self.code}, is_used={self.is_used}, expires_at={self.expires_at})"

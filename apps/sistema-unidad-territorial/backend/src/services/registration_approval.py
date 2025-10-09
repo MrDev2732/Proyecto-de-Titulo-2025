@@ -10,14 +10,13 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
-from src.database.models import User, RegistrationRequest
-from src.database.models.community import Community
-from src.database.repositories.auth_repository import AuthRepository
-from src.database.repositories.community_repository import (
+from src.database.models import User, RegistrationRequest, Community
+from src.database.repositories import (
+    AuthRepository,
     RegistrationRequestRepository,
-    ResidentMembershipRepository
+    ResidentMembershipRepository, 
+    AddressEvidenceRepository
 )
-from src.database.repositories.resident_repository import AddressEvidenceRepository
 from src.database.enums import MembershipStatus, UserStatus
 from src.core.security import generate_secure_password, get_password_hash
 from src.core.logging import get_logger

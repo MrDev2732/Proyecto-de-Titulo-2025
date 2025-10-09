@@ -2,10 +2,11 @@
 Servicio simplificado para envío de correos electrónicos usando SMTP.
 """
 
+import asyncio
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from datetime import datetime
 
 from src.core.config import settings
@@ -48,7 +49,7 @@ class EmailService:
             raise
 
     @staticmethod
-    async def send_email(
+    def _send_email_sync(
         to_email: str,
         subject: str,
         body: str,
@@ -57,7 +58,8 @@ class EmailService:
         bcc: Optional[List[str]] = None
     ) -> bool:
         """
-        Enviar un correo electrónico.
+        Enviar un correo electrónico de forma síncrona.
+        Esta función se ejecutará en un thread pool.
 
         Args:
             to_email: Email del destinatario
@@ -70,14 +72,6 @@ class EmailService:
         Returns:
             bool: True si se envió correctamente, False si no
         """
-        if not settings.email.enabled:
-            logger.warning("📧 Envío de emails deshabilitado - email no enviado")
-            return False
-
-        if not settings.email.is_configured:
-            logger.error("❌ Configuración de email incompleta")
-            return False
-
         try:
             # Crear mensaje
             msg = MIMEMultipart()
@@ -109,6 +103,52 @@ class EmailService:
 
         except Exception as e:
             logger.error(f"❌ Error enviando email a {to_email}: {e}")
+            return False
+
+    @staticmethod
+    async def send_email(
+        to_email: str,
+        subject: str,
+        body: str,
+        is_html: bool = False,
+        cc: Optional[List[str]] = None,
+        bcc: Optional[List[str]] = None
+    ) -> bool:
+        """
+        Enviar un correo electrónico de forma asíncrona.
+
+        Args:
+            to_email: Email del destinatario
+            subject: Asunto del correo
+            body: Cuerpo del correo
+            is_html: Si el cuerpo es HTML
+            cc: Lista de emails en copia
+            bcc: Lista de emails en copia oculta
+
+        Returns:
+            bool: True si se envió correctamente, False si no
+        """
+        if not settings.email.enabled:
+            logger.warning("📧 Envío de emails deshabilitado - email no enviado")
+            return False
+
+        if not settings.email.is_configured:
+            logger.error("❌ Configuración de email incompleta")
+            return False
+
+        # Ejecutar la operación síncrona en un thread pool
+        try:
+            return await asyncio.to_thread(
+                EmailService._send_email_sync,
+                to_email=to_email,
+                subject=subject,
+                body=body,
+                is_html=is_html,
+                cc=cc,
+                bcc=bcc
+            )
+        except Exception as e:
+            logger.error(f"❌ Error ejecutando envío de email en thread pool: {e}")
             return False
 
     @staticmethod

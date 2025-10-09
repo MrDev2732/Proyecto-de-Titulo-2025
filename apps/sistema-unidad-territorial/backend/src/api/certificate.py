@@ -9,18 +9,18 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.session import get_db_session
-from src.schemas.community_schemas import (
+from src.schemas import (
     CertificateRequest,
     CertificateResponse,
+    ErrorResponse
 )
-from src.schemas.auth_schemas import ErrorResponse
 from src.core.dependencies import get_current_active_user
 from src.database import User
-from src.database.repositories.community_repository import (
+from src.database.repositories import (
     CommunityRepository,
     ResidentMembershipRepository,
 )
-from src.services.certificate_service import CertificateService
+from src.services.certificate import CertificateService
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)

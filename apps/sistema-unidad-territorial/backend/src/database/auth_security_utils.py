@@ -6,7 +6,7 @@ Funciones para rate limiting, detección de ataques y análisis de riesgo usando
 from typing import Dict, Optional, Tuple, NamedTuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.repositories.auth_log_repository import AuthenticationLogRepository
+from src.database.repositories import AuthenticationLogRepository
 from src.core.logging import get_logger
 
 

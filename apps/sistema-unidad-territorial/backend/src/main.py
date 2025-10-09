@@ -9,14 +9,18 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.core.config import settings
 from src.core.logging import configure_logging, get_logger
 from src.api.auth import router as auth_router
+from src.api.password_reset import router as password_reset_router
 from src.api.tenant import router as tenant_router
 from src.api.registration import router as registration_router
 from src.api.membership import router as membership_router
 from src.api.certificate import router as certificate_router
 from src.api.files import router as files_router
 from src.api.email import router as email_router
+from src.api.news import router as news_router
+from src.api.user_communities import router as user_communities_router
 from src.core.middleware import SessionTrackingMiddleware, AuthLoggingMiddleware
 from src.services.auth import AuthInitializer
+from src.services.news_initializer import NewsInitializer
 from src.database.session import get_transaction_session
 from src.database.utils import DatabaseSetup
 
@@ -44,6 +48,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         async with get_transaction_session() as session:
             await AuthInitializer.initialize_auth_data(session)
         logger.info("✅ Datos de autenticación inicializados")
+
+        # Inicializar noticias de ejemplo
+        async with get_transaction_session() as session:
+            await NewsInitializer.initialize_sample_data(session)
+        logger.info("✅ Datos de noticias inicializados")
 
         yield
 
@@ -139,12 +148,15 @@ async def log_requests(request: Request, call_next):
 
 # Incluir routers
 app.include_router(auth_router, prefix=settings.api.v1_str)
+app.include_router(password_reset_router, prefix=settings.api.v1_str)
 app.include_router(tenant_router, prefix=settings.api.v1_str)
 app.include_router(registration_router, prefix=settings.api.v1_str)
 app.include_router(membership_router, prefix=settings.api.v1_str)
 app.include_router(certificate_router, prefix=settings.api.v1_str)
 app.include_router(files_router)
 app.include_router(email_router, prefix=settings.api.v1_str)
+app.include_router(news_router, prefix=settings.api.v1_str)
+app.include_router(user_communities_router, prefix=settings.api.v1_str)
 
 
 # Endpoint de salud

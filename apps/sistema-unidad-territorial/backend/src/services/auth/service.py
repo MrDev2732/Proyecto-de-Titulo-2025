@@ -19,9 +19,12 @@ from src.database.enums import (
     AuthFailureReason,
     RegistrationProvider,
 )
-from src.database.repositories.auth_repository import AuthRepository, SessionRepository
-from src.database.repositories.login_gating_repository import LoginGatingRepository
-from src.database.repositories.community_repository import RegistrationRequestRepository
+from src.database.repositories import (
+    AuthRepository,
+    SessionRepository,
+    LoginGatingRepository,
+    RegistrationRequestRepository
+)
 from src.services.auth.log_service import create_auth_log_service
 from src.core.security import (
     verify_password, 
@@ -31,7 +34,7 @@ from src.core.security import (
     hash_token,
     verify_token
 )
-from src.schemas.auth_schemas import (
+from src.schemas import (
     UserResponse, 
     OAuthUserInfo,
     RoleResponse

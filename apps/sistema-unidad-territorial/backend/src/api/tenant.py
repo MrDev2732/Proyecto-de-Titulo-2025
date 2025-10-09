@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.session import get_db_session
-from src.schemas.community_schemas import (
+from src.schemas import (
     CommunityResponse,
     TenantResponse,
     TenantWithCommunitiesResponse,
@@ -16,9 +16,8 @@ from src.schemas.community_schemas import (
     TenantListResponse,
     CommunitiesByTenantResponse,
 )
-from src.database.repositories.community_repository import CommunityRepository
-from src.database.repositories.tenant_repository import TenantRepository
-from src.services.community_service import CommunityService
+from src.database.repositories import CommunityRepository, TenantRepository
+from src.services.community import CommunityService
 from src.core.logging import get_logger
 
 

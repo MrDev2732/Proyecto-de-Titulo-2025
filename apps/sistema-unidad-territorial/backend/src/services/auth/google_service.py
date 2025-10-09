@@ -15,10 +15,9 @@ from src.database.enums import (
     AuthResult,
     AuthFailureReason,
 )
-from src.database.repositories.auth_repository import AuthRepository, OAuthRepository
-from src.database.repositories.login_gating_repository import LoginGatingRepository
+from src.database.repositories import AuthRepository, OAuthRepository, LoginGatingRepository
 from src.services.auth.log_service import create_auth_log_service
-from src.schemas.auth_schemas import OAuthUserInfo
+from src.schemas import OAuthUserInfo
 from src.core.config import settings
 from src.database import now_chile
 from src.core.logging import get_logger

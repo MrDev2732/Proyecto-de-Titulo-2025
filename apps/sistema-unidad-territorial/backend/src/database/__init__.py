@@ -46,6 +46,7 @@ __all__ = [
     "Outbox",
     "NotificationLog",
     "AuditLog",
+    "PasswordResetToken",
 
     # Enums (imported from enums.__init__)
     "UserStatus",

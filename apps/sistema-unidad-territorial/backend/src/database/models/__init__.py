@@ -24,7 +24,7 @@ from src.database.models.certificates import Certificate
 from src.database.models.spaces import Space, Reservation
 from src.database.models.projects import Project, ProjectAttachment
 from src.database.models.news import News
-from src.database.models.system import Tenant, Outbox, NotificationLog, AuditLog
+from src.database.models.system import Tenant, Outbox, NotificationLog, AuditLog, PasswordResetToken
 from src.database.models.community import (
     Community,
     ResidentMembership,
@@ -77,6 +77,7 @@ __all__ = [
     "Outbox",
     "NotificationLog",
     "AuditLog",
+    "PasswordResetToken",
 
     # Community
     "Community",

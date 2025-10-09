@@ -6,8 +6,7 @@ from typing import List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import Community, Tenant
-from src.database.repositories.community_repository import CommunityRepository
-from src.database.repositories.tenant_repository import TenantRepository
+from src.database.repositories import CommunityRepository, TenantRepository
 
 
 class CommunityService:
