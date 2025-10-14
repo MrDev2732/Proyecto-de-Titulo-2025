@@ -2,8 +2,8 @@ from typing import Any, Dict, Optional
 from uuid import UUID as PyUUID, uuid4
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, text, Integer, select
+from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import Mapped
 from sqlalchemy.sql import func
@@ -32,22 +32,22 @@ class TimestampMixin:
     @declared_attr
     def created_at(cls) -> Mapped[datetime]:
         return Column(
-            DateTime(timezone=True),
+            TIMESTAMP,
             nullable=False,
             default=now_chile,
             server_default=func.now(),
-            comment="Creation timestamp in Chile timezone"
+            comment="Creation timestamp with timezone"
         )
 
     @declared_attr
     def updated_at(cls) -> Mapped[datetime]:
         return Column(
-            DateTime(timezone=True),
+            TIMESTAMP,
             nullable=False,
             default=now_chile,
             onupdate=now_chile,
             server_default=func.now(),
-            comment="Last update timestamp in Chile timezone"
+            comment="Last update timestamp with timezone"
         )
 
 
@@ -55,12 +55,12 @@ class TenantMixin:
     """Mixin that provides multi-tenant support."""
 
     @declared_attr
-    def tenant_id(cls) -> Mapped[Optional[PyUUID]]:
+    def tenant_id(cls) -> Mapped[PyUUID]:
         return Column(
             UUID(as_uuid=True),
-            nullable=True,
+            nullable=False,
             index=True,
-            comment="Tenant ID for multi-tenancy support"
+            comment="Tenant ID for multi-tenancy support (NOT NULL)"
         )
 
 
@@ -70,7 +70,7 @@ class SoftDeleteMixin:
     @declared_attr
     def deleted_at(cls) -> Mapped[Optional[datetime]]:
         return Column(
-            DateTime(timezone=True),
+            TIMESTAMP,
             nullable=True,
             index=True,
             comment="Soft delete timestamp - NULL means active"
@@ -177,6 +177,20 @@ class TenantSoftDeleteModel(BaseModel, TenantMixin, SoftDeleteMixin):
 
     __abstract__ = True
 
+
+class OptimisticLockMixin:
+    """Mixin que proporciona optimistic locking."""
+
+    @declared_attr
+    def lock_version(cls) -> Mapped[int]:
+        return Column(
+            Integer,
+            nullable=False,
+            default=0,
+            server_default='0',
+            comment="Version for optimistic locking"
+        )
+
     async def get_tenant_data_async(self, session, include_tenant_info: bool = False) -> Dict[str, Any]:
         """
         Get model data with optional tenant information.
@@ -191,9 +205,7 @@ class TenantSoftDeleteModel(BaseModel, TenantMixin, SoftDeleteMixin):
         data = self.to_dict()
 
         if include_tenant_info and self.tenant_id:
-            from sqlalchemy import select
             from src.database.models.system import Tenant
-
             result = await session.execute(
                 select(Tenant).where(Tenant.id == self.tenant_id)
             )

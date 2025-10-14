@@ -7,17 +7,18 @@ from sqlalchemy import (
     String,
     Text,
     CheckConstraint,
-    Index
+    Index,
+    Integer
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import BaseModel
+from src.database.models.base import SoftDeleteBaseModel, OptimisticLockMixin
 from src.database.enums import ProjectStatus
 
 
-class Project(BaseModel):
+class Project(SoftDeleteBaseModel, OptimisticLockMixin):
     """Community project model."""
 
     __tablename__ = 'projects'
@@ -87,9 +88,10 @@ class Project(BaseModel):
         return f"Project(id={self.id}, title={title_preview}, status={self.status})"
 
 
-class ProjectAttachment(BaseModel):
+class ProjectAttachment(SoftDeleteBaseModel):
     """Project attachment model."""
-
+    # Constraints and schema
+    __table_args__ = {'schema': SCHEMA}
     __tablename__ = 'project_attachments'
 
     # Relationships
@@ -100,20 +102,32 @@ class ProjectAttachment(BaseModel):
         comment="Project ID for the attachment"
     )
 
-    # Attachment information
-    url: Mapped[str] = Column(
-        Text, 
-        nullable=False, 
-        comment="URL of the attachment file"
+    # Attachment information con storage seguro
+    bucket: Mapped[str] = Column(
+        Text,
+        nullable=False,
+        comment="Bucket donde se almacena el archivo"
     )
-    type: Mapped[str] = Column(
-        Text, 
-        nullable=False, 
-        comment="Type of the attachment file"
+    storage_key: Mapped[str] = Column(
+        Text,
+        nullable=False,
+        comment="Clave de almacenamiento del archivo"
     )
-
-    # Constraints and schema
-    __table_args__ = {'schema': SCHEMA}
+    sha256: Mapped[str] = Column(
+        String(64),
+        nullable=False,
+        comment="SHA256 hash del archivo"
+    )
+    mime_type: Mapped[str] = Column(
+        String(100),
+        nullable=False,
+        comment="Tipo MIME del archivo"
+    )
+    original_filename: Mapped[Optional[str]] = Column(
+        Text,
+        nullable=True,
+        comment="Nombre original del archivo"
+    )
 
     # Relationships
     project: Mapped[Project] = relationship("Project", back_populates="attachments")
