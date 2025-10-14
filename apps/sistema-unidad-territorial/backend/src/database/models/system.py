@@ -10,13 +10,12 @@ from sqlalchemy import (
     String,
     Text,
     Integer,
-    DateTime, 
-    Boolean,
     CheckConstraint,
-    Index
+    Index,
+    LargeBinary
 )
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
+from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
@@ -105,14 +104,19 @@ class Outbox(BaseModel):
         comment="Maximum delivery attempts before marking as failed"
     )
     next_attempt_at: Mapped[Optional[datetime]] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP,
         nullable=True,
         comment="Next delivery attempt timestamp"
     )
     processed_at: Mapped[Optional[datetime]] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP,
         nullable=True,
         comment="Timestamp when successfully processed"
+    )
+    dedupe_key: Mapped[Optional[str]] = Column(
+        Text,
+        nullable=True,
+        comment="Deduplication key for idempotency"
     )
     last_error: Mapped[Optional[str]] = Column(
         Text, 
@@ -137,6 +141,9 @@ class Outbox(BaseModel):
               postgresql_where="status = 'processed'"),
         # Index for monitoring and debugging
         Index('idx_outbox_type_status', 'type', 'status', 'created_at'),
+        # Index for deduplication
+        Index('idx_outbox_dedupe', 'type', 'dedupe_key', unique=True,
+              postgresql_where="dedupe_key IS NOT NULL"),
         {'schema': SCHEMA}
     )
 
@@ -199,6 +206,16 @@ class NotificationLog(BaseModel):
         nullable=False,
         comment="Delivery status"
     )
+    provider_message_id: Mapped[Optional[str]] = Column(
+        Text,
+        nullable=True,
+        comment="Provider's message ID for tracking"
+    )
+    payload_snapshot: Mapped[Optional[dict]] = Column(
+        JSONB,
+        nullable=True,
+        comment="Snapshot of the payload at delivery time"
+    )
 
     # Constraints and schema
     __table_args__ = (
@@ -208,6 +225,7 @@ class NotificationLog(BaseModel):
         ),
         Index('idx_notification_log_outbox', 'outbox_id'),
         Index('idx_notification_log_destination_created', 'destination', 'created_at'),
+        Index('idx_notification_log_provider_msg', 'provider_message_id'),
         {'schema': SCHEMA}
     )
 
@@ -249,17 +267,22 @@ class AuditLog(BaseModel):
     )
 
     # Contextual information
-    ip_address: Mapped[Optional[str]] = Column(
-        INET, 
-        nullable=True, 
-        comment="IP address of the actor"
-    )
-    timestamp: Mapped[datetime] = Column(
-        DateTime(timezone=True), 
+    occurred_at: Mapped[datetime] = Column(
+        TIMESTAMP,
         nullable=False, 
         default=now_chile,
         server_default=func.now(),
         comment="Action timestamp"
+    )
+    actor_type: Mapped[Optional[str]] = Column(
+        String(20),
+        nullable=True,
+        comment="Type of actor: user, system"
+    )
+    request_id: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment="Request correlation ID"
     )
     extra_data: Mapped[Optional[Dict[str, Any]]] = Column(
         JSONB, 
@@ -269,8 +292,13 @@ class AuditLog(BaseModel):
 
     # Indexes and schema
     __table_args__ = (
-        Index('idx_audit_entity', 'entity', 'entity_id', 'timestamp'),
-        Index('idx_audit_actor', 'actor_id', 'timestamp'),
+        CheckConstraint(
+            "actor_type IS NULL OR actor_type IN ('user', 'system')",
+            name='ck_audit_log_actor_type'
+        ),
+        Index('idx_audit_entity', 'entity', 'entity_id', 'occurred_at'),
+        Index('idx_audit_actor', 'actor_id', 'occurred_at'),
+        Index('idx_audit_request', 'request_id'),
         {'schema': SCHEMA}
     )
 
@@ -292,49 +320,32 @@ class PasswordResetToken(BaseModel):
         comment="Usuario que solicita el reset"
     )
 
-    # Código corto de 6 dígitos (user-friendly)
-    code: Mapped[str] = Column(
-        String(6), 
-        nullable=False, 
-        unique=True,
-        comment="Código de 6 dígitos para validación"
-    )
-
-    # Token seguro para URLs
+    # Solo token hash para seguridad
     token: Mapped[str] = Column(
-        String(64), 
-        nullable=False, 
+        Text,
+        nullable=False,
+        comment="Token para URLs de reset"
+    )
+    token_hash: Mapped[bytes] = Column(
+        LargeBinary,
+        nullable=False,
         unique=True,
-        comment="Token seguro para URLs de reset"
+        comment="Hash del token para validación segura"
     )
 
     # Control de expiración y uso
     expires_at: Mapped[datetime] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP,
         nullable=False,
         comment="Fecha y hora de expiración del token"
     )
-
-    used_at: Mapped[Optional[datetime]] = Column(
-        DateTime(timezone=True), 
+    consumed_at: Mapped[Optional[datetime]] = Column(
+        TIMESTAMP,
         nullable=True,
-        comment="Fecha y hora cuando se usó el token"
-    )
-
-    is_used: Mapped[bool] = Column(
-        Boolean, 
-        nullable=False, 
-        default=False,
-        server_default='false',
-        comment="Indica si el token ya fue utilizado"
+        comment="Fecha y hora cuando se consumió el token"
     )
 
     # Metadatos adicionales
-    ip_address: Mapped[Optional[str]] = Column(
-        INET, 
-        nullable=True,
-        comment="IP desde donde se solicitó el reset"
-    )
 
     user_agent: Mapped[Optional[str]] = Column(
         Text, 
@@ -344,16 +355,12 @@ class PasswordResetToken(BaseModel):
 
     # Constraints e índices
     __table_args__ = (
-        # Índice para búsquedas por código
-        Index('idx_password_reset_code', 'code'),
-        # Índice para búsquedas por token
-        Index('idx_password_reset_token', 'token'),
+        # Índice para búsquedas por token hash
+        Index('idx_password_reset_token_hash', 'token_hash'),
         # Índice para cleanup de tokens expirados
         Index('idx_password_reset_expires', 'expires_at'),
         # Índice para búsquedas por usuario
         Index('idx_password_reset_user', 'user_id', 'created_at'),
-        # Índice compuesto para validación
-        Index('idx_password_reset_validation', 'code', 'is_used', 'expires_at'),
         {'schema': SCHEMA}
     )
 
@@ -375,7 +382,6 @@ class PasswordResetToken(BaseModel):
         cls, 
         user_id: PyUUID, 
         expires_in_minutes: int = 15,
-        ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> "PasswordResetToken":
         """
@@ -384,7 +390,6 @@ class PasswordResetToken(BaseModel):
         Args:
             user_id: ID del usuario
             expires_in_minutes: Minutos hasta expiración (default: 15)
-            ip_address: IP del solicitante
             user_agent: User agent del navegador
 
         Returns:
@@ -398,23 +403,21 @@ class PasswordResetToken(BaseModel):
             code=cls.generate_code(),
             token=cls.generate_token(),
             expires_at=expires_at,
-            ip_address=ip_address,
             user_agent=user_agent
         )
 
     def is_valid(self) -> bool:
-        """Verificar si el token es válido (no usado y no expirado)."""
+        """Verificar si el token es válido (no consumido y no expirado)."""
         now = now_chile()
-        return not self.is_used and self.expires_at > now
+        return self.consumed_at is None and self.expires_at > now
 
     def is_expired(self) -> bool:
         """Verificar si el token ha expirado."""
         return now_chile() > self.expires_at
 
-    def mark_as_used(self) -> None:
-        """Marcar el token como usado."""
-        self.is_used = True
-        self.used_at = now_chile()
+    def mark_as_consumed(self) -> None:
+        """Marcar el token como consumido."""
+        self.consumed_at = now_chile()
 
     def time_until_expiry(self) -> Optional[timedelta]:
         """Obtener tiempo restante hasta expiración."""
@@ -423,4 +426,4 @@ class PasswordResetToken(BaseModel):
         return self.expires_at - now_chile()
 
     def __repr__(self) -> str:
-        return f"PasswordResetToken(id={self.id}, user_id={self.user_id}, code={self.code}, is_used={self.is_used}, expires_at={self.expires_at})"
+        return f"PasswordResetToken(id={self.id}, user_id={self.user_id}, consumed={self.consumed_at is not None}, expires_at={self.expires_at})"
