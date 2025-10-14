@@ -7,19 +7,20 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
-    DateTime,
     CheckConstraint,
     Index,
+    Integer,
+    Boolean,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP, JSONB
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import BaseModel
+from src.database.models.base import SoftDeleteBaseModel
 from src.database.enums import ReservationStatus
 
 
-class Space(BaseModel):
+class Space(SoftDeleteBaseModel):
     """Reservable space model."""
 
     __tablename__ = 'spaces'
@@ -40,6 +41,25 @@ class Space(BaseModel):
         nullable=True,
         comment="Space description"
     )
+    capacity: Mapped[Optional[int]] = Column(
+        Integer,
+        nullable=True,
+        comment="Maximum capacity"
+    )
+    requires_approval: Mapped[bool] = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default='true',
+        comment="Whether reservations require approval"
+    )
+    rules_json: Mapped[Optional[dict]] = Column(
+        JSONB,
+        nullable=True,
+        default={},
+        server_default='{}',
+        comment="Space rules and restrictions"
+    )
 
     # Constraints and schema
     __table_args__ = (
@@ -59,7 +79,7 @@ class Space(BaseModel):
         return f"Space(id={self.id}, name={self.name})"
 
 
-class Reservation(BaseModel):
+class Reservation(SoftDeleteBaseModel):
     """Space reservation model."""
 
     __tablename__ = 'reservations'
@@ -80,21 +100,31 @@ class Reservation(BaseModel):
 
     # Time information
     start_time: Mapped[datetime] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP,
         nullable=False,
         comment="Reservation start time"
     )
     end_time: Mapped[datetime] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP,
         nullable=False,
         comment="Reservation end time"
     )
 
-    # Status
+    # Status y cancelación
     status: Mapped[str] = Column(
         String(20), 
         nullable=False,
         comment="Reservation status"
+    )
+    canceled_at: Mapped[Optional[datetime]] = Column(
+        TIMESTAMP,
+        nullable=True,
+        comment="Cancellation timestamp"
+    )
+    cancel_reason: Mapped[Optional[str]] = Column(
+        Text,
+        nullable=True,
+        comment="Reason for cancellation"
     )
 
     # Constraints and schema
@@ -109,9 +139,8 @@ class Reservation(BaseModel):
         # Indexes for optimizing queries
         Index('idx_reservation_space_start', 'space_id', 'start_time'),
         Index('idx_reservation_user', 'requesting_user_id'),
-        # EXCLUDE constraint for preventing overlaps
-        # Note: This requires btree_gist extension in PostgreSQL
-        # ExcludeConstraint is better handled at application level or via direct SQL
+        # EXCLUDE constraint para prevenir solapes (requiere btree_gist)
+        # Se implementará en la migración SQL directamente
         {'schema': SCHEMA}
     )
 
