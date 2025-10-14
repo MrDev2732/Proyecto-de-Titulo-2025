@@ -9,11 +9,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import TenantBaseModel
+from src.database.models.base import TenantSoftDeleteModel
 from src.database.enums import EvidenceType
 
 
-class AddressEvidence(TenantBaseModel):
+class AddressEvidence(TenantSoftDeleteModel):
     """Address evidence model for users."""
 
     __tablename__ = 'address_evidences'
@@ -29,10 +29,25 @@ class AddressEvidence(TenantBaseModel):
         nullable=False,
         comment="Type of address evidence"
     )
-    url: Mapped[str] = Column(
-        Text, 
-        nullable=False, 
-        comment="URL of the evidence file"
+    bucket: Mapped[str] = Column(
+        Text,
+        nullable=False,
+        comment="Bucket donde se almacena la evidencia"
+    )
+    storage_key: Mapped[str] = Column(
+        Text,
+        nullable=False,
+        comment="Clave de almacenamiento de la evidencia"
+    )
+    sha256: Mapped[str] = Column(
+        String(64),
+        nullable=False,
+        comment="SHA256 hash del archivo"
+    )
+    mime_type: Mapped[str] = Column(
+        String(100),
+        nullable=False,
+        comment="Tipo MIME del archivo"
     )
 
     # Constraints and schema
