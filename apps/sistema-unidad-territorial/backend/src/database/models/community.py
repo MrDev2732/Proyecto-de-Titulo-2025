@@ -11,8 +11,9 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
     DateTime,
+    String,
 )
-from sqlalchemy.dialects.postgresql import UUID, CITEXT
+from sqlalchemy.dialects.postgresql import UUID, CITEXT, TIMESTAMP
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
@@ -124,9 +125,20 @@ class ResidentMembership(SoftDeleteBaseModel):
         comment="Whether the membership is verified"
     )
     verified_at: Mapped[Optional[datetime]] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP,
         nullable=True,
         comment="Verification timestamp"
+    )
+    verified_by: Mapped[Optional[PyUUID]] = Column(
+        UUID(as_uuid=True),
+        ForeignKey(f'{SCHEMA}.users.id', ondelete='SET NULL'),
+        nullable=True,
+        comment="User who verified the membership"
+    )
+    verification_method: Mapped[Optional[str]] = Column(
+        String(50),
+        nullable=True,
+        comment="Method used for verification"
     )
     board_role: Mapped[Optional[BoardRole]] = Column(
         Enum(BoardRole, name='board_role_enum', values_callable=lambda obj: [e.value for e in obj]),
@@ -228,9 +240,14 @@ class RegistrationRequest(BaseModel):
         comment="Moderator who made the decision"
     )
     decided_at: Mapped[Optional[datetime]] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP,
         nullable=True,
         comment="Decision timestamp"
+    )
+    expires_at: Mapped[Optional[datetime]] = Column(
+        TIMESTAMP,
+        nullable=True,
+        comment="Request expiration timestamp"
     )
     decision_notes: Mapped[Optional[str]] = Column(
         Text, 
@@ -240,6 +257,13 @@ class RegistrationRequest(BaseModel):
 
     # Constraints and schema
     __table_args__ = (
+        # Solo una solicitud activa por comunidad+email
+        Index(
+            'idx_registration_active_unique',
+            'community_id', 'email',
+            unique=True,
+            postgresql_where="status IN ('pending', 'under_review')"
+        ),
         Index('idx_registration_tenant_community_status', 'tenant_id', 'community_id', 'status'),
         Index('idx_registration_email', 'email'),
         Index('idx_registration_status_created', 'status', 'created_at'),
@@ -282,10 +306,25 @@ class RegistrationRequestAttachment(BaseModel):
         nullable=False,
         comment="Registration request ID"
     )
-    url: Mapped[str] = Column(
-        Text, 
+    bucket: Mapped[str] = Column(
+        Text,
         nullable=False,
-        comment="URL of the attachment file"
+        comment="Bucket donde se almacena el archivo"
+    )
+    storage_key: Mapped[str] = Column(
+        Text,
+        nullable=False,
+        comment="Clave de almacenamiento del archivo"
+    )
+    sha256: Mapped[str] = Column(
+        String(64),
+        nullable=False,
+        comment="SHA256 hash del archivo"
+    )
+    mime_type: Mapped[str] = Column(
+        String(100),
+        nullable=False,
+        comment="Tipo MIME del archivo"
     )
     kind: Mapped[AttachmentKind] = Column(
         Enum(AttachmentKind, name='attachment_kind_enum', values_callable=lambda obj: [e.value for e in obj]),
