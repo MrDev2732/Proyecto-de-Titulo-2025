@@ -5,11 +5,11 @@ from sqlalchemy import Column, Text, DateTime, CheckConstraint, Index
 from sqlalchemy.orm import Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import TenantBaseModel
+from src.database.models.base import TenantSoftDeleteModel
 from src.database.utils import now_chile
 
 
-class News(TenantBaseModel):
+class News(TenantSoftDeleteModel):
     """News or public announcement model."""
 
     __tablename__ = 'news'
