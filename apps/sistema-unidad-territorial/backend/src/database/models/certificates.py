@@ -14,11 +14,11 @@ from sqlalchemy.orm import relationship, Mapped
 from sqlalchemy.exc import IntegrityError
 
 from src.database import SCHEMA
-from src.database.models.base import TenantBaseModel
+from src.database.models.base import TenantSoftDeleteModel
 from src.database.enums import CertificateStatus
 
 
-class Certificate(TenantBaseModel):
+class Certificate(TenantSoftDeleteModel):
     """Residence certificate model."""
 
     __tablename__ = 'certificates'
@@ -54,16 +54,21 @@ class Certificate(TenantBaseModel):
         comment="Certificate folio number"
     )
 
-    # PDF file information
-    pdf_url: Mapped[Optional[str]] = Column(
-        Text, 
+    # Archivo PDF con storage seguro
+    pdf_bucket: Mapped[Optional[str]] = Column(
+        Text,
         nullable=True,
-        comment="URL of the generated PDF certificate"
+        comment="Bucket donde se almacena el PDF"
+    )
+    pdf_storage_key: Mapped[Optional[str]] = Column(
+        Text,
+        nullable=True,
+        comment="Clave de almacenamiento del PDF"
     )
     pdf_sha256: Mapped[Optional[str]] = Column(
         String(64), 
         nullable=True,
-        comment="SHA256 hash of the PDF file"
+        comment="SHA256 hash del archivo PDF"
     )
 
     # Constraints and schema
