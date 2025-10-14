@@ -14,8 +14,9 @@ from sqlalchemy import (
     CheckConstraint,
     Index,
     SmallInteger,
+    LargeBinary,
 )
-from sqlalchemy.dialects.postgresql import CITEXT, UUID, INET
+from sqlalchemy.dialects.postgresql import CITEXT, UUID
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
@@ -58,7 +59,7 @@ class User(SoftDeleteBaseModel):
     )
     password_hash: Mapped[Optional[str]] = Column(
         Text, 
-        nullable=True, 
+        nullable=True,
         comment="Password hash using Argon2id (NULL for OAuth-only users - preferred)"
     )
     status: Mapped[UserStatus] = Column(
@@ -76,9 +77,9 @@ class User(SoftDeleteBaseModel):
         comment="User's full name"
     )
     rut: Mapped[Optional[str]] = Column(
-        String(12), 
+        Text,
         nullable=True,
-        comment="Chilean RUT (Rol Único Tributario)"
+        comment="Chilean RUT normalizado (formato: 12345678-9)"
     )
     address: Mapped[Optional[str]] = Column(
         Text, 
@@ -88,8 +89,12 @@ class User(SoftDeleteBaseModel):
 
     # Constraints and schema
     __table_args__ = (
+        CheckConstraint(
+            "rut IS NULL OR rut ~ '^[0-9]{7,8}-[0-9Kk]$'",
+            name='ck_user_rut_format'
+        ),
         Index('idx_user_primary_email', 'primary_email_id'),
-        Index('idx_user_rut', 'rut'),
+        Index('idx_user_rut', 'rut', postgresql_where='deleted_at IS NULL'),
         Index('idx_user_full_name', 'full_name'),
         {'schema': SCHEMA}
     )
@@ -395,16 +400,16 @@ class UserOauthIdentity(TenantBaseModel):
         comment="Email reported by the OAuth provider"
     )
 
-    # OAuth tokens (optional)
-    access_token: Mapped[Optional[str]] = Column(
-        Text, 
+    # OAuth tokens cifrados (seguridad mejorada)
+    encrypted_access_token: Mapped[Optional[bytes]] = Column(
+        LargeBinary,
         nullable=True,
-        comment="OAuth access token"
+        comment="OAuth access token cifrado"
     )
-    refresh_token: Mapped[Optional[str]] = Column(
-        Text, 
+    encrypted_refresh_token: Mapped[Optional[bytes]] = Column(
+        LargeBinary,
         nullable=True,
-        comment="OAuth refresh token"
+        comment="OAuth refresh token cifrado"
     )
     token_scope: Mapped[Optional[str]] = Column(
         Text, 
@@ -415,6 +420,11 @@ class UserOauthIdentity(TenantBaseModel):
         DateTime(timezone=True), 
         nullable=True,
         comment="OAuth token expiration timestamp"
+    )
+    token_last_rotated_at: Mapped[Optional[datetime]] = Column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Última rotación de tokens"
     )
 
     # Constraints and schema
@@ -452,8 +462,6 @@ class UserSession(TenantBaseModel):
         Index('idx_user_session_tenant_active', 'tenant_id', 'is_active'),
         # Índice para cleanup de sesiones expiradas
         Index('idx_user_session_expires', 'expires_at'),
-        # Índice para análisis de IP
-        Index('idx_user_session_ip_created', 'ip_address', 'created_at'),
         {'schema': SCHEMA}
     )
 
@@ -478,11 +486,6 @@ class UserSession(TenantBaseModel):
         nullable=False,
         comment="Session expiration timestamp"
     )
-    ip_address: Mapped[Optional[str]] = Column(
-        String(45), 
-        nullable=True,
-        comment="Client IP address (IPv4 or IPv6)"
-    )
     user_agent: Mapped[Optional[str]] = Column(
         Text, 
         nullable=True,
@@ -499,6 +502,16 @@ class UserSession(TenantBaseModel):
         DateTime(timezone=True), 
         nullable=True,
         comment="Timestamp when session was revoked"
+    )
+    last_used_at: Mapped[Optional[datetime]] = Column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp of last session usage"
+    )
+    device_id: Mapped[Optional[str]] = Column(
+        Text,
+        nullable=True,
+        comment="Device identifier"
     )
 
     # Relationships
@@ -589,20 +602,10 @@ class AuthenticationLog(TenantBaseModel):
     )
 
     # Contexto técnico
-    ip: Mapped[Optional[str]] = Column(
-        INET, 
-        nullable=True,
-        comment="Dirección IP del cliente"
-    )
     user_agent: Mapped[Optional[str]] = Column(
         Text, 
         nullable=True,
         comment="User Agent del navegador/cliente"
-    )
-    geo_country: Mapped[Optional[str]] = Column(
-        String(2), 
-        nullable=True,
-        comment="Código de país ISO-3166 alpha-2"
     )
 
     # Correlación
@@ -619,17 +622,12 @@ class AuthenticationLog(TenantBaseModel):
             name='ck_auth_log_risk_score_range'
         ),
         CheckConstraint(
-            "geo_country IS NULL OR length(geo_country) = 2",
-            name='ck_auth_log_geo_country_format'
-        ),
-        CheckConstraint(
             "(result = 'SUCCESS' AND failure_reason IS NULL) OR (result = 'FAIL')",
             name='ck_auth_log_success_no_failure_reason'
         ),
         # Índices para consultas reales y performance
         Index('idx_authlog_user_ts', 'user_id', 'created_at'),
         Index('idx_authlog_email_ts', 'email', 'created_at'), 
-        Index('idx_authlog_ip_ts', 'ip', 'created_at'),
         Index('idx_authlog_tenant_ts', 'tenant_id', 'created_at'),
         # Índice parcial para fallos (crítico para rate limiting)
         Index(
@@ -656,7 +654,7 @@ class AuthenticationLog(TenantBaseModel):
 
     def __repr__(self) -> str:
         return (f"AuthenticationLog(id={self.id}, result={self.result}, "
-                f"provider={self.provider}, email={self.email}, ip={self.ip})")
+                f"provider={self.provider}, email={self.email})")
 
 
 class SystemRoleAssignment(SoftDeleteBaseModel):
