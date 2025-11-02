@@ -125,9 +125,7 @@ class GoogleOAuthService:
     async def authenticate_or_create_oauth_user(
         session: AsyncSession,
         oauth_info: OAuthUserInfo,
-        ip: Optional[str] = None,
         user_agent: Optional[str] = None,
-        geo_country: Optional[str] = None
     ) -> Optional[tuple[User, UUID]]:
         """
         Autenticar usuario OAuth con gated access control.
@@ -135,9 +133,7 @@ class GoogleOAuthService:
         Args:
             session: Sesión de base de datos
             oauth_info: Información del usuario OAuth
-            ip: Dirección IP del cliente
             user_agent: User agent del navegador
-            geo_country: Código de país
 
         Returns:
             tuple[User, UUID]: Usuario autenticado y el ID del log, o None si no puede hacer login
@@ -148,13 +144,11 @@ class GoogleOAuthService:
         failure_reason = None
 
         try:
-            # Verificar seguridad pre-autenticación para OAuth (solo si tenemos IP)
-            if ip and settings.environment != "DEVELOPMENT":
+            # Verificar seguridad pre-autenticación para OAuth
+            if settings.environment != "DEVELOPMENT":
                 security_check = await auth_log_service.check_pre_auth_security(
-                    ip=ip,
                     email=oauth_info.email,
                     user_agent=user_agent,
-                    geo_country=geo_country
                 )
 
                 if security_check['block_request'] and security_check['metrics']['risk_score'] > 95:
@@ -263,7 +257,6 @@ class GoogleOAuthService:
                 result=AuthResult.SUCCESS,
                 user=user,
                 user_agent=user_agent,
-                tenant_id=getattr(user, 'tenant_id', None)
             )
 
             await session.commit()
