@@ -5,7 +5,7 @@ Esto reemplaza las CHECK constraints que no pueden usar subqueries en PostgreSQL
 
 from src.database import SCHEMA
 
-# Función trigger para validar role scope assignments
+# Función trigger para validar role scope assignments con la nueva estructura polimórfica
 ROLE_ASSIGNMENT_SCOPE_VALIDATION_FUNCTION = f"""
 CREATE OR REPLACE FUNCTION {SCHEMA}.validate_role_assignment_scope()
 RETURNS TRIGGER AS $$
@@ -22,26 +22,35 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Validaciones según el scope del rol
+    -- Validaciones según el scope del rol usando la nueva estructura polimórfica
     CASE role_scope
-        WHEN 'GLOBAL' THEN
-            -- GLOBAL: no debe tener tenant_id ni community_id
-            IF NEW.tenant_id IS NOT NULL OR NEW.community_id IS NOT NULL THEN
-                RAISE EXCEPTION 'GLOBAL scope roles cannot have tenant_id or community_id context'
+        WHEN 'SYSTEM' THEN
+            -- SYSTEM: scope_type debe ser 'system', scope_id y tenant_id deben ser NULL
+            IF NEW.scope_type != 'system' OR NEW.scope_id IS NOT NULL OR NEW.tenant_id IS NOT NULL THEN
+                RAISE EXCEPTION 'SYSTEM scope roles must have scope_type=system, scope_id=NULL, tenant_id=NULL'
                     USING ERRCODE = 'check_violation';
             END IF;
 
         WHEN 'TENANT' THEN
-            -- TENANT: debe tener tenant_id pero no community_id
-            IF NEW.tenant_id IS NULL OR NEW.community_id IS NOT NULL THEN
-                RAISE EXCEPTION 'TENANT scope roles require tenant_id and cannot have community_id'
+            -- TENANT: scope_type debe ser 'tenant', scope_id debe coincidir con tenant_id
+            IF NEW.scope_type != 'tenant' OR NEW.scope_id IS NULL OR NEW.tenant_id IS NULL OR NEW.scope_id != NEW.tenant_id THEN
+                RAISE EXCEPTION 'TENANT scope roles must have scope_type=tenant, scope_id=tenant_id'
                     USING ERRCODE = 'check_violation';
             END IF;
 
         WHEN 'COMMUNITY' THEN
-            -- COMMUNITY: debe tener community_id (tenant_id es opcional)
-            IF NEW.community_id IS NULL THEN
-                RAISE EXCEPTION 'COMMUNITY scope roles require community_id'
+            -- COMMUNITY: scope_type debe ser 'community', scope_id debe ser community_id, tenant_id requerido
+            IF NEW.scope_type != 'community' OR NEW.scope_id IS NULL OR NEW.tenant_id IS NULL THEN
+                RAISE EXCEPTION 'COMMUNITY scope roles must have scope_type=community, scope_id=community_id, tenant_id required'
+                    USING ERRCODE = 'check_violation';
+            END IF;
+            
+            -- Verificar que la comunidad pertenece al tenant especificado
+            IF NOT EXISTS (
+                SELECT 1 FROM {SCHEMA}.communities 
+                WHERE id = NEW.scope_id AND tenant_id = NEW.tenant_id
+            ) THEN
+                RAISE EXCEPTION 'Community % does not belong to tenant %', NEW.scope_id, NEW.tenant_id
                     USING ERRCODE = 'check_violation';
             END IF;
 
@@ -55,24 +64,20 @@ END;
 $$ LANGUAGE plpgsql;
 """
 
-# Trigger que ejecuta la validación - DISABLED: Needs to be updated for new role assignment tables
+# Trigger que ejecuta la validación - ACTUALIZADO para la nueva estructura polimórfica
 ROLE_ASSIGNMENT_SCOPE_VALIDATION_TRIGGER = f"""
--- DISABLED: This trigger needs to be updated for the new role assignment table structure
--- DROP TRIGGER IF EXISTS trg_validate_role_assignment_scope ON {SCHEMA}.role_assignments;
--- 
--- CREATE TRIGGER trg_validate_role_assignment_scope
---     BEFORE INSERT OR UPDATE ON {SCHEMA}.role_assignments
---     FOR EACH ROW
---     EXECUTE FUNCTION {SCHEMA}.validate_role_assignment_scope();
-SELECT 1; -- Placeholder to avoid empty statement
+DROP TRIGGER IF EXISTS trg_validate_role_assignment_scope ON {SCHEMA}.role_assignments;
+
+CREATE TRIGGER trg_validate_role_assignment_scope
+    BEFORE INSERT OR UPDATE ON {SCHEMA}.role_assignments
+    FOR EACH ROW
+    EXECUTE FUNCTION {SCHEMA}.validate_role_assignment_scope();
 """
 
 # Función para cleanup del trigger (para rollback)
 DROP_ROLE_ASSIGNMENT_SCOPE_VALIDATION = f"""
--- DISABLED: This trigger needs to be updated for the new role assignment table structure
--- DROP TRIGGER IF EXISTS trg_validate_role_assignment_scope ON {SCHEMA}.role_assignments;
--- DROP FUNCTION IF EXISTS {SCHEMA}.validate_role_assignment_scope();
-SELECT 1; -- Placeholder to avoid empty statement
+DROP TRIGGER IF EXISTS trg_validate_role_assignment_scope ON {SCHEMA}.role_assignments;
+DROP FUNCTION IF EXISTS {SCHEMA}.validate_role_assignment_scope();
 """
 
 __all__ = [
