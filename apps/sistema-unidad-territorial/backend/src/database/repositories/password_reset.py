@@ -118,7 +118,6 @@ class PasswordResetRepository:
         self, 
         user_id: UUID, 
         expires_in_minutes: int = 15,
-        ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> PasswordResetToken:
         """
@@ -127,7 +126,6 @@ class PasswordResetRepository:
         Args:
             user_id: ID del usuario
             expires_in_minutes: Minutos hasta expiración
-            ip_address: IP del cliente
             user_agent: User agent del cliente
 
         Returns:
@@ -136,7 +134,6 @@ class PasswordResetRepository:
         reset_token = PasswordResetToken.create_for_user(
             user_id=user_id,
             expires_in_minutes=expires_in_minutes,
-            ip_address=ip_address,
             user_agent=user_agent
         )
 
