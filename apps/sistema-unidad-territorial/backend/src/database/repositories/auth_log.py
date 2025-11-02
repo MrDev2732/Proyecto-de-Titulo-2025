@@ -14,12 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import (
     AuthenticationLog,
-    now_chile,
     AuthResult,
     AuthFailureReason,
     AuthProvider,
     AuthMethod,
 )
+from src.database.utils import now_chile
 from src.core.logging import get_logger
 
 
@@ -42,10 +42,7 @@ class AuthenticationLogRepository:
         failure_reason: Optional[AuthFailureReason] = None,
         error_code: Optional[str] = None,
         mfa_used: bool = False,
-        risk_score: Optional[int] = None,
-        ip: Optional[str] = None,
         user_agent: Optional[str] = None,
-        geo_country: Optional[str] = None,
         request_id: Optional[UUID] = None
     ) -> AuthenticationLog:
         """
@@ -63,10 +60,7 @@ class AuthenticationLogRepository:
             failure_reason: Razón del fallo (si aplica)
             error_code: Código de error interno (opcional)
             mfa_used: Si se utilizó MFA
-            risk_score: Puntuación de riesgo (0-100)
-            ip: Dirección IP del cliente
             user_agent: User agent del navegador
-            geo_country: Código de país ISO-3166 alpha-2
             request_id: ID de correlación con logs de aplicación
 
         Returns:
@@ -83,10 +77,7 @@ class AuthenticationLogRepository:
             failure_reason=failure_reason,
             error_code=error_code,
             mfa_used=mfa_used,
-            risk_score=risk_score,
-            ip=ip,
             user_agent=user_agent,
-            geo_country=geo_country,
             request_id=request_id
         )
 
@@ -102,6 +93,9 @@ class AuthenticationLogRepository:
     ) -> int:
         """
         Contar fallos por IP en ventana de tiempo.
+        
+        NOTA: El modelo actual no tiene campo 'ip', este método siempre retornará 0.
+        Se mantiene por compatibilidad pero necesita que se agregue el campo 'ip' al modelo.
 
         Args:
             session: Sesión de base de datos
@@ -109,20 +103,11 @@ class AuthenticationLogRepository:
             minutes: Ventana de tiempo en minutos
 
         Returns:
-            int: Número de fallos
+            int: Número de fallos (siempre 0 hasta que se agregue el campo 'ip')
         """
-        time_threshold = now_chile() - timedelta(minutes=minutes)
-
-        result = await session.execute(
-            select(func.count(AuthenticationLog.id)).where(
-                and_(
-                    AuthenticationLog.ip == ip,
-                    AuthenticationLog.result == AuthResult.FAIL,
-                    AuthenticationLog.created_at > time_threshold
-                )
-            )
-        )
-        return result.scalar() or 0
+        # TODO: Agregar campo 'ip' al modelo AuthenticationLog
+        logger.warning("count_failures_by_ip: El campo 'ip' no existe en el modelo AuthenticationLog")
+        return 0
 
     @staticmethod
     async def count_failures_by_email(
@@ -162,6 +147,9 @@ class AuthenticationLogRepository:
     ) -> Dict[str, Any]:
         """
         Obtener análisis completo de una IP.
+        
+        NOTA: El modelo actual no tiene campo 'ip', este método siempre retornará datos vacíos.
+        Se mantiene por compatibilidad pero necesita que se agregue el campo 'ip' al modelo.
 
         Args:
             session: Sesión de base de datos
@@ -169,50 +157,18 @@ class AuthenticationLogRepository:
             days: Días hacia atrás para el análisis
 
         Returns:
-            Dict: Análisis de la IP
+            Dict: Análisis de la IP (siempre vacío hasta que se agregue el campo 'ip')
         """
-        time_threshold = now_chile() - timedelta(days=days)
-
-        result = await session.execute(
-            select(
-                func.count(AuthenticationLog.id).label('total_attempts'),
-                func.count(AuthenticationLog.id).filter(
-                    AuthenticationLog.result == AuthResult.FAIL
-                ).label('failed_attempts'),
-                func.count(AuthenticationLog.email.distinct()).label('unique_emails'),
-                func.avg(AuthenticationLog.risk_score).label('avg_risk_score'),
-                func.min(AuthenticationLog.created_at).label('first_seen'),
-                func.max(AuthenticationLog.created_at).label('last_seen')
-            ).where(
-                and_(
-                    AuthenticationLog.ip == ip,
-                    AuthenticationLog.created_at > time_threshold
-                )
-            )
-        )
-
-        row = result.fetchone()
-        if not row or row.total_attempts == 0:
-            return {
-                'total_attempts': 0,
-                'failed_attempts': 0,
-                'unique_emails': 0,
-                'failure_rate': 0.0,
-                'avg_risk_score': 0.0,
-                'first_seen': None,
-                'last_seen': None
-            }
-
-        failure_rate = (row.failed_attempts / row.total_attempts) * 100 if row.total_attempts > 0 else 0
-
+        # TODO: Agregar campo 'ip' al modelo AuthenticationLog
+        logger.warning("get_ip_analysis: El campo 'ip' no existe en el modelo AuthenticationLog")
         return {
-            'total_attempts': row.total_attempts,
-            'failed_attempts': row.failed_attempts,
-            'unique_emails': row.unique_emails,
-            'failure_rate': round(failure_rate, 2),
-            'avg_risk_score': round(row.avg_risk_score or 0, 2),
-            'first_seen': row.first_seen,
-            'last_seen': row.last_seen
+            'total_attempts': 0,
+            'failed_attempts': 0,
+            'unique_emails': 0,
+            'failure_rate': 0.0,
+            'avg_risk_score': 0.0,
+            'first_seen': None,
+            'last_seen': None
         }
 
     @staticmethod
@@ -240,9 +196,6 @@ class AuthenticationLogRepository:
                 func.count(AuthenticationLog.id).filter(
                     AuthenticationLog.result == AuthResult.FAIL
                 ).label('failed_attempts'),
-                func.count(AuthenticationLog.ip.distinct()).label('unique_ips'),
-                func.count(AuthenticationLog.geo_country.distinct()).label('unique_countries'),
-                func.avg(AuthenticationLog.risk_score).label('avg_risk_score')
             ).where(
                 and_(
                     AuthenticationLog.email == email.lower(),
@@ -267,10 +220,10 @@ class AuthenticationLogRepository:
         return {
             'total_attempts': row.total_attempts,
             'failed_attempts': row.failed_attempts,
-            'unique_ips': row.unique_ips,
-            'unique_countries': row.unique_countries,
+            'unique_ips': 0,  # TODO: Agregar campo 'ip' al modelo
+            'unique_countries': 0,  # TODO: Agregar campo 'geo_country' al modelo
             'failure_rate': round(failure_rate, 2),
-            'avg_risk_score': round(row.avg_risk_score or 0, 2)
+            'avg_risk_score': 0
         }
 
     @staticmethod
@@ -290,22 +243,11 @@ class AuthenticationLogRepository:
             limit: Número máximo de países
 
         Returns:
-            List[str]: Lista de códigos de país
+            List[str]: Lista de códigos de país (siempre vacía hasta que se agregue el campo 'geo_country')
         """
-        time_threshold = now_chile() - timedelta(days=days)
-
-        result = await session.execute(
-            select(AuthenticationLog.geo_country.distinct()).where(
-                and_(
-                    AuthenticationLog.email == email.lower(),
-                    AuthenticationLog.result == AuthResult.SUCCESS,
-                    AuthenticationLog.geo_country.isnot(None),
-                    AuthenticationLog.created_at > time_threshold
-                )
-            ).order_by(desc(AuthenticationLog.created_at)).limit(limit)
-        )
-
-        return [row.geo_country for row in result.fetchall()]
+        # TODO: Agregar campo 'geo_country' al modelo AuthenticationLog
+        logger.warning("get_recent_countries_for_email: El campo 'geo_country' no existe en el modelo AuthenticationLog")
+        return []
 
     @staticmethod
     async def count_recent_attempts(
@@ -319,7 +261,7 @@ class AuthenticationLogRepository:
 
         Args:
             session: Sesión de base de datos
-            ip: Dirección IP (opcional)
+            ip: Dirección IP (opcional, ignorado hasta que se agregue el campo 'ip')
             email: Email (opcional)
             minutes: Ventana de tiempo en minutos
 
@@ -330,17 +272,12 @@ class AuthenticationLogRepository:
 
         conditions = [AuthenticationLog.created_at > time_threshold]
 
-        if ip and email:
-            conditions.append(
-                or_(
-                    AuthenticationLog.ip == ip,
-                    AuthenticationLog.email == email.lower()
-                )
-            )
-        elif ip:
-            conditions.append(AuthenticationLog.ip == ip)
-        elif email:
+        if email:
             conditions.append(AuthenticationLog.email == email.lower())
+        elif ip:
+            # TODO: Agregar campo 'ip' al modelo AuthenticationLog
+            logger.warning("count_recent_attempts: El campo 'ip' no existe en el modelo AuthenticationLog")
+            return 0
         else:
             return 0
 
