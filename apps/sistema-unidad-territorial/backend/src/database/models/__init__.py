@@ -16,9 +16,6 @@ from src.database.models.auth import (
     UserOauthIdentity,
     UserSession,
     AuthenticationLog,
-    SystemRoleAssignment,
-    TenantRoleAssignment,
-    CommunityRoleAssignment,
 )
 from src.database.models.evidences import AddressEvidence
 from src.database.models.certificates import Certificate
@@ -62,9 +59,6 @@ __all__ = [
     "UserOauthIdentity",
     "UserSession",
     "AuthenticationLog",
-    "SystemRoleAssignment",
-    "TenantRoleAssignment",
-    "CommunityRoleAssignment",
 
     # Evidences
     "AddressEvidence",
