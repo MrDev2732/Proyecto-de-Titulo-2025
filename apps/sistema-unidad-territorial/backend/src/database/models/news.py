@@ -1,8 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Text, DateTime, CheckConstraint, Index
+from sqlalchemy import Column, Text, CheckConstraint, Index
 from sqlalchemy.orm import Mapped
+
+from sqlalchemy.dialects.postgresql import TIMESTAMP
 
 from src.database import SCHEMA
 from src.database.models.base import TenantSoftDeleteModel
@@ -28,12 +30,12 @@ class News(TenantSoftDeleteModel):
 
     # Temporal visibility control
     visible_from: Mapped[datetime] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP(timezone=True), 
         nullable=False,
         comment="Start of visibility period"
     )
     visible_until: Mapped[Optional[datetime]] = Column(
-        DateTime(timezone=True), 
+        TIMESTAMP(timezone=True), 
         nullable=True,
         comment="End of visibility period (optional)"
     )
