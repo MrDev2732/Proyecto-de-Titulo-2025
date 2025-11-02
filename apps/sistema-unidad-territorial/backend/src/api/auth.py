@@ -33,48 +33,6 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 
-def get_client_ip(request: Request) -> Optional[str]:
-    """
-    Obtener la IP real del cliente considerando proxies y load balancers.
-
-    Busca en orden de prioridad:
-    1. X-Forwarded-For (estándar para proxies)
-    2. X-Real-IP (usado por Nginx)
-    3. X-Client-IP (algunos proxies)
-    4. CF-Connecting-IP (Cloudflare)
-    5. request.client.host (conexión directa)
-
-    Args:
-        request: Request de FastAPI
-
-    Returns:
-        str: IP del cliente o None si no se puede determinar
-    """
-    # Headers comunes de proxies (en orden de prioridad)
-    ip_headers = [
-        "x-forwarded-for",      # Estándar para proxies/load balancers
-        "x-real-ip",            # Nginx
-        "x-client-ip",          # Algunos proxies
-        "cf-connecting-ip",     # Cloudflare
-        "x-cluster-client-ip",  # Kubernetes
-    ]
-
-    for header in ip_headers:
-        ip = request.headers.get(header)
-        if ip:
-            # X-Forwarded-For puede tener múltiples IPs separadas por comas
-            # La primera es la IP original del cliente
-            if "," in ip:
-                ip = ip.split(",")[0].strip()
-
-            # Validar que la IP tenga formato válido
-            if ip and ip.strip():
-                return ip.strip()
-
-    # Fallback: IP de la conexión directa
-    return request.client.host if request.client else None
-
-
 @router.post(
     "/signin",
     response_model=TokenResponse,
@@ -99,7 +57,6 @@ async def login(
     Retorna tokens de acceso y refresh junto con información del usuario.
     """
     # Obtener información del cliente
-    ip_address = get_client_ip(request)
     user_agent = request.headers.get("user-agent")
 
     # Autenticar usuario
@@ -107,7 +64,6 @@ async def login(
         session, 
         login_data.email, 
         login_data.password,
-        ip=ip_address,
         user_agent=user_agent
     )
 
@@ -124,7 +80,6 @@ async def login(
     tokens = await AuthService.create_session_for_user(
         session,
         user,
-        ip_address=ip_address,
         user_agent=user_agent,
         log_authentication=False
     )
@@ -171,14 +126,12 @@ async def refresh_token(
     Retorna nuevos tokens de acceso y refresh.
     """
     # Obtener información del cliente
-    ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
 
     # Refrescar sesión
     tokens = await AuthService.refresh_user_session(
         session, 
         refresh_data.refresh_token,
-        ip_address=ip_address,
         user_agent=user_agent
     )
 
@@ -362,7 +315,6 @@ async def google_oauth_callback(
     logger.debug(f"Got OAuth info from Google")
 
     # Obtener información del cliente
-    ip_address = get_client_ip(request)
     user_agent = request.headers.get("user-agent")
 
     logger.debug(f"About to authenticate OAuth user")
@@ -370,7 +322,6 @@ async def google_oauth_callback(
     auth_result = await GoogleOAuthService.authenticate_or_create_oauth_user(
         session, 
         oauth_info,
-        ip=ip_address,
         user_agent=user_agent
     )
     logger.debug(f"Authentication completed")
@@ -392,7 +343,6 @@ async def google_oauth_callback(
     tokens = await AuthService.create_session_for_user(
         session,
         user,
-        ip_address=ip_address,
         user_agent=user_agent,
         log_authentication=False
     )
