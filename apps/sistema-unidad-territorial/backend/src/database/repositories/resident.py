@@ -4,18 +4,170 @@ Repository para manejo de residentes y evidencias de dirección.
 Contiene todas las operaciones relacionadas con el modelo Resident y AddressEvidence.
 """
 
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from src.database.models import AddressEvidence, RegistrationRequestAttachment
+from src.database import (
+    now_chile,
+    ResidentMembership,
+    RegistrationRequestAttachment,
+    MembershipStatus,
+    AddressEvidence,
+    RegistrationRequestAttachment,
+)
 from src.database.enums import EvidenceType
 from src.core.logging import get_logger
 
 
 logger = get_logger(__name__)
+
+class ResidentMembershipRepository:
+    """Repository para operaciones de membresías de residentes."""
+
+    @staticmethod
+    async def create_membership(
+        session: AsyncSession,
+        user_id: UUID,
+        community_id: UUID,
+        status: MembershipStatus = MembershipStatus.PENDING,
+        verified: bool = False
+    ) -> ResidentMembership:
+        """
+        Crear una nueva membresía de residente.
+
+        Args:
+            session: Sesión de base de datos
+            user_id: ID del usuario
+            community_id: ID de la comunidad
+            status: Estado de la membresía
+            verified: Si está verificada
+
+        Returns:
+            ResidentMembership: Membresía creada
+        """
+        membership = ResidentMembership(
+            user_id=user_id,
+            community_id=community_id,
+            status=status,
+            verified=verified
+        )
+        session.add(membership)
+        await session.flush()
+        return membership
+
+    @staticmethod
+    async def find_user_membership_in_community(
+        session: AsyncSession,
+        user_id: UUID,
+        community_id: UUID
+    ) -> Optional[ResidentMembership]:
+        """
+        Buscar la membresía de un usuario en una comunidad específica.
+
+        Args:
+            session: Sesión de base de datos
+            user_id: ID del usuario
+            community_id: ID de la comunidad
+
+        Returns:
+            ResidentMembership: Membresía encontrada o None
+        """
+        result = await session.execute(
+            select(ResidentMembership).where(
+                and_(
+                    ResidentMembership.user_id == user_id,
+                    ResidentMembership.community_id == community_id
+                )
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_user_approved_memberships(
+        session: AsyncSession,
+        user_id: UUID
+    ) -> List[ResidentMembership]:
+        """
+        Obtener todas las membresías aprobadas de un usuario.
+
+        Args:
+            session: Sesión de base de datos
+            user_id: ID del usuario
+
+        Returns:
+            List[ResidentMembership]: Lista de membresías aprobadas
+        """
+        result = await session.execute(
+            select(ResidentMembership)
+            .options(selectinload(ResidentMembership.community))
+            .where(
+                and_(
+                    ResidentMembership.user_id == user_id,
+                    ResidentMembership.status == MembershipStatus.APPROVED
+                )
+            )
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def user_has_approved_membership(
+        session: AsyncSession,
+        user_id: UUID
+    ) -> bool:
+        """
+        Verificar si un usuario tiene al menos una membresía aprobada.
+
+        Args:
+            session: Sesión de base de datos
+            user_id: ID del usuario
+
+        Returns:
+            bool: True si tiene membresía aprobada, False si no
+        """
+        result = await session.execute(
+            select(ResidentMembership).where(
+                and_(
+                    ResidentMembership.user_id == user_id,
+                    ResidentMembership.status == MembershipStatus.APPROVED
+                )
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def approve_membership(
+        session: AsyncSession,
+        membership_id: UUID,
+        verified: bool = True
+    ) -> Optional[ResidentMembership]:
+        """
+        Aprobar una membresía y opcionalmente verificarla.
+
+        Args:
+            session: Sesión de base de datos
+            membership_id: ID de la membresía
+            verified: Si marcar como verificada
+
+        Returns:
+            ResidentMembership: Membresía actualizada o None si no se encontró
+        """
+        result = await session.execute(
+            select(ResidentMembership).where(ResidentMembership.id == membership_id)
+        )
+        membership = result.scalar_one_or_none()
+
+        if membership:
+            membership.status = MembershipStatus.APPROVED
+            membership.verified = verified
+            if verified:
+                membership.verified_at = now_chile()
+            await session.flush()
+
+        return membership
 
 
 class AddressEvidenceRepository:
