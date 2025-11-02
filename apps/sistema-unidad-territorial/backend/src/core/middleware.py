@@ -195,7 +195,6 @@ class AuthLoggingMiddleware(BaseHTTPMiddleware):
             "has_token": False,
             "user_id": None,
             "user_email": None,
-            "client_ip": self._get_client_ip(request),
             "user_agent": request.headers.get("user-agent", "Unknown")
         }
 
@@ -212,31 +211,6 @@ class AuthLoggingMiddleware(BaseHTTPMiddleware):
                 auth_info["user_email"] = token_data.email
 
         return auth_info
-
-    def _get_client_ip(self, request: Request) -> str:
-        """
-        Obtener IP del cliente considerando proxies.
-
-        Args:
-            request: Request HTTP
-
-        Returns:
-            str: Dirección IP del cliente
-        """
-        # Verificar headers de proxies
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
-
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
-
-        # Fallback a IP directa
-        if hasattr(request.client, "host"):
-            return request.client.host
-
-        return "unknown"
 
     async def _log_auth_event(
         self, 
@@ -260,12 +234,10 @@ class AuthLoggingMiddleware(BaseHTTPMiddleware):
         if path.endswith("/auth/login"):
             if status_code == 200:
                 logger.info(
-                    f"✅ Login exitoso - IP: {auth_info['client_ip']} - "
                     f"User-Agent: {auth_info['user_agent']}"
                 )
             else:
                 logger.warning(
-                    f"❌ Intento de login fallido - IP: {auth_info['client_ip']} - "
                     f"Status: {status_code} - User-Agent: {auth_info['user_agent']}"
                 )
 
@@ -273,19 +245,16 @@ class AuthLoggingMiddleware(BaseHTTPMiddleware):
             if auth_info["user_id"]:
                 logger.info(
                     f"🔐 Logout - Usuario: {auth_info['user_id']} - "
-                    f"IP: {auth_info['client_ip']}"
                 )
 
         # Log accesos a recursos protegidos con errores de auth
         elif auth_info["has_token"] and status_code == 401:
             logger.warning(
                 f"🔒 Acceso denegado - Usuario: {auth_info.get('user_id', 'Unknown')} - "
-                f"Path: {path} - IP: {auth_info['client_ip']}"
             )
 
         # Log accesos exitosos a recursos protegidos (solo DEBUG)
         elif auth_info["has_token"] and status_code == 200 and settings.debug:
             logger.debug(
                 f"🔓 Acceso autorizado - Usuario: {auth_info['user_id']} - "
-                f"Path: {path} - IP: {auth_info['client_ip']}"
             )
