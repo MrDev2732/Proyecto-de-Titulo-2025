@@ -18,9 +18,7 @@ from src.database.models import (
     User,
     UserEmail,
     Role,
-    SystemRoleAssignment,
-    TenantRoleAssignment,
-    CommunityRoleAssignment,
+    RoleAssignment,
     Community,
     ResidentMembership,
     RegistrationRequest,
@@ -144,11 +142,12 @@ class LoginGatingRepository:
 
         # Check if user has SYSTEM roles (SUPERADMIN, SUPPORT)
         global_assignment = await session.execute(
-            select(SystemRoleAssignment)
-            .join(Role)
+            select(RoleAssignment)
+            .join(Role, RoleAssignment.role_id == Role.id)
             .where(
                 and_(
-                    SystemRoleAssignment.user_id == user_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'system',
                     Role.scope == RoleScope.SYSTEM
                 )
             )
@@ -161,11 +160,12 @@ class LoginGatingRepository:
 
         # Check if user is tenant admin
         admin_assignment = await session.execute(
-            select(TenantRoleAssignment)
-            .join(Role)
+            select(RoleAssignment)
+            .join(Role, RoleAssignment.role_id == Role.id)
             .where(
                 and_(
-                    TenantRoleAssignment.user_id == user_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'tenant',
                     Role.scope == RoleScope.TENANT,
                     Role.name == "ADMIN"
                 )
@@ -245,12 +245,13 @@ class LoginGatingRepository:
             List of tenant dictionaries where user has admin role
         """
         result = await session.execute(
-            select(TenantRoleAssignment, Role, Tenant)
-            .join(Role, TenantRoleAssignment.role_id == Role.id)
-            .join(Tenant, TenantRoleAssignment.tenant_id == Tenant.id)
+            select(RoleAssignment, Role, Tenant)
+            .join(Role, RoleAssignment.role_id == Role.id)
+            .join(Tenant, RoleAssignment.scope_id == Tenant.id)
             .where(
                 and_(
-                    TenantRoleAssignment.user_id == user_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'tenant',
                     Role.scope == RoleScope.TENANT
                 )
             )
@@ -281,12 +282,13 @@ class LoginGatingRepository:
             List of community dictionaries where user has moderator role
         """
         result = await session.execute(
-            select(CommunityRoleAssignment, Role, Community)
-            .join(Role, CommunityRoleAssignment.role_id == Role.id)
-            .join(Community, CommunityRoleAssignment.community_id == Community.id)
+            select(RoleAssignment, Role, Community)
+            .join(Role, RoleAssignment.role_id == Role.id)
+            .join(Community, RoleAssignment.scope_id == Community.id)
             .where(
                 and_(
-                    CommunityRoleAssignment.user_id == user_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'community',
                     Role.scope == RoleScope.COMMUNITY
                 )
             )
@@ -324,13 +326,14 @@ class LoginGatingRepository:
             select(RegistrationRequest, Community)
             .join(Community, RegistrationRequest.community_id == Community.id)
             .join(
-                CommunityRoleAssignment, 
+                RoleAssignment, 
                 and_(
-                    CommunityRoleAssignment.community_id == Community.id,
-                    CommunityRoleAssignment.user_id == user_id
+                    RoleAssignment.scope_id == Community.id,
+                    RoleAssignment.scope_type == 'community',
+                    RoleAssignment.user_id == user_id
                 )
             )
-            .join(Role, CommunityRoleAssignment.role_id == Role.id)
+            .join(Role, RoleAssignment.role_id == Role.id)
             .where(
                 and_(
                     Role.name == "MODERATOR",
