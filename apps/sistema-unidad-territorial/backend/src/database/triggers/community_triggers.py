@@ -5,20 +5,22 @@ Database triggers for community-related business rules.
 from sqlalchemy import text
 from src.database import SCHEMA
 
-# Trigger function to limit moderators per community (max 3) - Updated for new role assignment tables
+# Trigger function to limit moderators per community (max 3) - ACTUALIZADO para tabla unificada role_assignments
 LIMIT_MODERATORS_FUNCTION = text(f"""
 CREATE OR REPLACE FUNCTION {SCHEMA}.trg_limit_moderators()
 RETURNS trigger AS $$
 DECLARE cnt INT;
 BEGIN
   IF (SELECT name FROM {SCHEMA}.roles WHERE id = NEW.role_id) = 'MODERATOR'
-     AND (SELECT scope FROM {SCHEMA}.roles WHERE id = NEW.role_id) = 'COMMUNITY' THEN
+     AND (SELECT scope FROM {SCHEMA}.roles WHERE id = NEW.role_id) = 'COMMUNITY'
+     AND NEW.scope_type = 'community' THEN
     SELECT COUNT(*) INTO cnt
-    FROM {SCHEMA}.community_role_assignments cra
-    WHERE cra.community_id = NEW.community_id
-      AND cra.role_id IN (SELECT id FROM {SCHEMA}.roles WHERE name='MODERATOR' AND scope='COMMUNITY');
+    FROM {SCHEMA}.role_assignments ra
+    WHERE ra.scope_id = NEW.scope_id
+      AND ra.scope_type = 'community'
+      AND ra.role_id IN (SELECT id FROM {SCHEMA}.roles WHERE name='MODERATOR' AND scope='COMMUNITY');
     IF cnt >= 3 THEN
-      RAISE EXCEPTION 'Community % already has the maximum of 3 moderators', NEW.community_id;
+      RAISE EXCEPTION 'Community % already has the maximum of 3 moderators', NEW.scope_id;
     END IF;
   END IF;
   RETURN NEW;
@@ -26,14 +28,14 @@ END;
 $$ LANGUAGE plpgsql;
 """)
 
-# Drop trigger if exists and create new one
+# Drop trigger if exists and create new one - ACTUALIZADO para tabla unificada
 DROP_LIMIT_MODERATORS_TRIGGER = text(f"""
-DROP TRIGGER IF EXISTS limit_moderators ON {SCHEMA}.community_role_assignments;
+DROP TRIGGER IF EXISTS limit_moderators ON {SCHEMA}.role_assignments;
 """)
 
 CREATE_LIMIT_MODERATORS_TRIGGER = text(f"""
 CREATE TRIGGER limit_moderators
-BEFORE INSERT ON {SCHEMA}.community_role_assignments
+BEFORE INSERT ON {SCHEMA}.role_assignments
 FOR EACH ROW EXECUTE FUNCTION {SCHEMA}.trg_limit_moderators();
 """)
 
@@ -89,6 +91,6 @@ DROP VIEW IF EXISTS {SCHEMA}.v_user_is_allowed_to_login;
 """)
 
 DROP_MODERATOR_TRIGGER_FUNCTION = text(f"""
-DROP TRIGGER IF EXISTS limit_moderators ON {SCHEMA}.community_role_assignments;
+DROP TRIGGER IF EXISTS limit_moderators ON {SCHEMA}.role_assignments;
 DROP FUNCTION IF EXISTS {SCHEMA}.trg_limit_moderators;
 """)
