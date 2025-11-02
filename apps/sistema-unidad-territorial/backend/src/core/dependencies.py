@@ -8,13 +8,13 @@ from uuid import UUID
 from fastapi import Depends, HTTPException, status, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, exists
+from sqlalchemy import select, and_, exists
 
 from src.database import (
     User, 
     RegistrationRequest, 
-    TenantRoleAssignment,
-    CommunityRoleAssignment,
+    RoleAssignment,
+    Role,
     Community
 )
 from src.database.session import get_db_session
@@ -108,14 +108,8 @@ def require_roles(allowed_roles: List[str]):
         Raises:
             HTTPException: Si el usuario no tiene los roles requeridos
         """
-        # Obtener todos los roles del usuario de las tres tablas
-        user_roles = []
-        # Roles de sistema
-        user_roles.extend([assignment.role.name for assignment in current_user.system_role_assignments])
-        # Roles de tenant
-        user_roles.extend([assignment.role.name for assignment in current_user.tenant_role_assignments])
-        # Roles de comunidad
-        user_roles.extend([assignment.role.name for assignment in current_user.community_role_assignments])
+        # Obtener todos los roles del usuario de la tabla unificada RoleAssignment
+        user_roles = [assignment.role.name for assignment in current_user.role_assignments]
 
         # Verificar si el usuario tiene al menos uno de los roles requeridos
         if not any(role in user_roles for role in allowed_roles):
@@ -186,14 +180,8 @@ def create_role_checker(role_name: str):
         Returns:
             bool: True si el usuario tiene el rol
         """
-        # Obtener todos los roles del usuario de las tres tablas
-        user_roles = []
-        # Roles de sistema
-        user_roles.extend([assignment.role.name for assignment in user.system_role_assignments])
-        # Roles de tenant
-        user_roles.extend([assignment.role.name for assignment in user.tenant_role_assignments])
-        # Roles de comunidad
-        user_roles.extend([assignment.role.name for assignment in user.community_role_assignments])
+        # Obtener todos los roles del usuario de la tabla unificada RoleAssignment
+        user_roles = [assignment.role.name for assignment in user.role_assignments]
         return role_name in user_roles
 
     return check_role
@@ -230,13 +218,7 @@ async def require_community_access(
         HTTPException: Si el usuario no tiene acceso a la comunidad
     """
     # Obtener todos los roles del usuario
-    user_roles = []
-    # Roles de sistema
-    user_roles.extend([assignment.role.name for assignment in current_user.system_role_assignments])
-    # Roles de tenant
-    user_roles.extend([assignment.role.name for assignment in current_user.tenant_role_assignments])
-    # Roles de comunidad
-    user_roles.extend([assignment.role.name for assignment in current_user.community_role_assignments])
+    user_roles = [assignment.role.name for assignment in current_user.role_assignments]
 
     # SUPERADMIN tiene acceso a todo
     if "SUPERADMIN" in user_roles:
@@ -245,17 +227,18 @@ async def require_community_access(
 
     # Verificar si es ADMIN de tenant que contiene esta comunidad
     tenant_admin_result = await session.execute(
-        select(TenantRoleAssignment)
-        .join(TenantRoleAssignment.role)
+        select(RoleAssignment)
+        .join(Role, RoleAssignment.role_id == Role.id)
         .where(
             and_(
-                TenantRoleAssignment.user_id == current_user.id,
-                TenantRoleAssignment.role.has(name="ADMIN"),
+                RoleAssignment.user_id == current_user.id,
+                Role.name == "ADMIN",
+                RoleAssignment.scope_type == 'tenant',
                 # Verificar que el tenant contenga esta comunidad
                 exists().where(
                     and_(
                         Community.id == community_id,
-                        Community.tenant_id == TenantRoleAssignment.tenant_id
+                        Community.tenant_id == RoleAssignment.scope_id
                     )
                 )
             )
@@ -264,13 +247,14 @@ async def require_community_access(
 
     # Verificar si es MODERATOR de esta comunidad específica
     community_moderator_result = await session.execute(
-        select(CommunityRoleAssignment)
-        .join(CommunityRoleAssignment.role)
+        select(RoleAssignment)
+        .join(Role, RoleAssignment.role_id == Role.id)
         .where(
             and_(
-                CommunityRoleAssignment.user_id == current_user.id,
-                CommunityRoleAssignment.role.has(name="MODERATOR"),
-                CommunityRoleAssignment.community_id == community_id
+                RoleAssignment.user_id == current_user.id,
+                Role.name == "MODERATOR",
+                RoleAssignment.scope_type == 'community',
+                RoleAssignment.scope_id == community_id
             )
         )
     )
@@ -330,13 +314,7 @@ async def require_registration_request_access(
     community_id = registration_request.community_id
 
     # Obtener todos los roles del usuario
-    user_roles = []
-    # Roles de sistema
-    user_roles.extend([assignment.role.name for assignment in current_user.system_role_assignments])
-    # Roles de tenant
-    user_roles.extend([assignment.role.name for assignment in current_user.tenant_role_assignments])
-    # Roles de comunidad
-    user_roles.extend([assignment.role.name for assignment in current_user.community_role_assignments])
+    user_roles = [assignment.role.name for assignment in current_user.role_assignments]
 
     # SUPERADMIN tiene acceso a todo
     if "SUPERADMIN" in user_roles:
@@ -345,17 +323,18 @@ async def require_registration_request_access(
 
     # Verificar si es ADMIN de tenant que contiene esta comunidad
     tenant_admin_result = await session.execute(
-        select(TenantRoleAssignment)
-        .join(TenantRoleAssignment.role)
+        select(RoleAssignment)
+        .join(Role, RoleAssignment.role_id == Role.id)
         .where(
             and_(
-                TenantRoleAssignment.user_id == current_user.id,
-                TenantRoleAssignment.role.has(name="ADMIN"),
+                RoleAssignment.user_id == current_user.id,
+                Role.name == "ADMIN",
+                RoleAssignment.scope_type == 'tenant',
                 # Verificar que el tenant contenga esta comunidad
                 exists().where(
                     and_(
                         Community.id == community_id,
-                        Community.tenant_id == TenantRoleAssignment.tenant_id
+                        Community.tenant_id == RoleAssignment.scope_id
                     )
                 )
             )
@@ -364,13 +343,14 @@ async def require_registration_request_access(
 
     # Verificar si es MODERATOR de esta comunidad específica
     community_moderator_result = await session.execute(
-        select(CommunityRoleAssignment)
-        .join(CommunityRoleAssignment.role)
+        select(RoleAssignment)
+        .join(Role, RoleAssignment.role_id == Role.id)
         .where(
             and_(
-                CommunityRoleAssignment.user_id == current_user.id,
-                CommunityRoleAssignment.role.has(name="MODERATOR"),
-                CommunityRoleAssignment.community_id == community_id
+                RoleAssignment.user_id == current_user.id,
+                Role.name == "MODERATOR",
+                RoleAssignment.scope_type == 'community',
+                RoleAssignment.scope_id == community_id
             )
         )
     )

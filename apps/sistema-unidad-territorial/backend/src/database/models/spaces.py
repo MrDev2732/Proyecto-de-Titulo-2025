@@ -16,11 +16,11 @@ from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP, JSONB
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import SoftDeleteBaseModel
+from src.database.models.base import SoftDeleteBaseModel, TenantSoftDeleteModel
 from src.database.enums import ReservationStatus
 
 
-class Space(SoftDeleteBaseModel):
+class Space(TenantSoftDeleteModel):
     """Reservable space model."""
 
     __tablename__ = 'spaces'
@@ -100,12 +100,12 @@ class Reservation(SoftDeleteBaseModel):
 
     # Time information
     start_time: Mapped[datetime] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=False,
         comment="Reservation start time"
     )
     end_time: Mapped[datetime] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=False,
         comment="Reservation end time"
     )
@@ -117,7 +117,7 @@ class Reservation(SoftDeleteBaseModel):
         comment="Reservation status"
     )
     canceled_at: Mapped[Optional[datetime]] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=True,
         comment="Cancellation timestamp"
     )

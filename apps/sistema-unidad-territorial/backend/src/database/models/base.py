@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional
 from uuid import UUID as PyUUID, uuid4
 from datetime import datetime
 
-from sqlalchemy import Column, text, Integer, select
+from sqlalchemy import Column, text, Integer, select, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import Mapped
@@ -32,7 +32,7 @@ class TimestampMixin:
     @declared_attr
     def created_at(cls) -> Mapped[datetime]:
         return Column(
-            TIMESTAMP,
+            TIMESTAMP(timezone=True),
             nullable=False,
             default=now_chile,
             server_default=func.now(),
@@ -42,7 +42,7 @@ class TimestampMixin:
     @declared_attr
     def updated_at(cls) -> Mapped[datetime]:
         return Column(
-            TIMESTAMP,
+            TIMESTAMP(timezone=True),
             nullable=False,
             default=now_chile,
             onupdate=now_chile,
@@ -56,8 +56,10 @@ class TenantMixin:
 
     @declared_attr
     def tenant_id(cls) -> Mapped[PyUUID]:
+        from src.database import SCHEMA
         return Column(
             UUID(as_uuid=True),
+            ForeignKey(f'{SCHEMA}.tenants.id', ondelete='RESTRICT'),
             nullable=False,
             index=True,
             comment="Tenant ID for multi-tenancy support (NOT NULL)"
@@ -70,7 +72,7 @@ class SoftDeleteMixin:
     @declared_attr
     def deleted_at(cls) -> Mapped[Optional[datetime]]:
         return Column(
-            TIMESTAMP,
+            TIMESTAMP(timezone=True),
             nullable=True,
             index=True,
             comment="Soft delete timestamp - NULL means active"

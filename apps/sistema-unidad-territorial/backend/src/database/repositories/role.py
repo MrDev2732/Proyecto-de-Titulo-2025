@@ -13,10 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import (
     Role, 
-    SystemRoleAssignment,
-    TenantRoleAssignment,
-    CommunityRoleAssignment,
-    User
+    RoleAssignment,
+    User,
+    Community
 )
 from src.database.enums import RoleScope
 from src.core.logging import get_logger
@@ -93,7 +92,7 @@ class RoleRepository:
         session: AsyncSession,
         role_id: UUID,
         user_id: UUID
-    ) -> SystemRoleAssignment:
+    ) -> RoleAssignment:
         """
         Asignar un rol de sistema a un usuario.
 
@@ -103,18 +102,23 @@ class RoleRepository:
             user_id: ID del usuario
 
         Returns:
-            SystemRoleAssignment: Asignación creada o existente
+            RoleAssignment: Asignación creada o existente
 
         Raises:
             ValueError: Si la asignación ya existe
         """
         # Verificar si la asignación ya existe
         existing = await session.execute(
-            select(SystemRoleAssignment)
+            select(RoleAssignment)
             .where(
-                SystemRoleAssignment.role_id == role_id,
-                SystemRoleAssignment.user_id == user_id,
-                SystemRoleAssignment.deleted_at.is_(None)
+                and_(
+                    RoleAssignment.role_id == role_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'system',
+                    RoleAssignment.scope_id.is_(None),
+                    RoleAssignment.tenant_id.is_(None),
+                    RoleAssignment.deleted_at.is_(None)
+                )
             )
         )
         existing_assignment = existing.scalar_one_or_none()
@@ -124,9 +128,12 @@ class RoleRepository:
             return existing_assignment
 
         # Crear nueva asignación
-        assignment = SystemRoleAssignment(
+        assignment = RoleAssignment(
             role_id=role_id,
-            user_id=user_id
+            user_id=user_id,
+            scope_type='system',
+            scope_id=None,
+            tenant_id=None
         )
         session.add(assignment)
         await session.flush()
@@ -138,7 +145,7 @@ class RoleRepository:
         role_id: UUID,
         user_id: UUID,
         tenant_id: UUID
-    ) -> TenantRoleAssignment:
+    ) -> RoleAssignment:
         """
         Asignar un rol de tenant a un usuario.
 
@@ -149,16 +156,20 @@ class RoleRepository:
             tenant_id: ID del tenant
 
         Returns:
-            TenantRoleAssignment: Asignación creada o existente
+            RoleAssignment: Asignación creada o existente
         """
         # Verificar si la asignación ya existe
         existing = await session.execute(
-            select(TenantRoleAssignment)
+            select(RoleAssignment)
             .where(
-                TenantRoleAssignment.role_id == role_id,
-                TenantRoleAssignment.user_id == user_id,
-                TenantRoleAssignment.tenant_id == tenant_id,
-                TenantRoleAssignment.deleted_at.is_(None)
+                and_(
+                    RoleAssignment.role_id == role_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'tenant',
+                    RoleAssignment.scope_id == tenant_id,
+                    RoleAssignment.tenant_id == tenant_id,
+                    RoleAssignment.deleted_at.is_(None)
+                )
             )
         )
         existing_assignment = existing.scalar_one_or_none()
@@ -168,9 +179,11 @@ class RoleRepository:
             return existing_assignment
 
         # Crear nueva asignación
-        assignment = TenantRoleAssignment(
+        assignment = RoleAssignment(
             role_id=role_id,
             user_id=user_id,
+            scope_type='tenant',
+            scope_id=tenant_id,
             tenant_id=tenant_id
         )
         session.add(assignment)
@@ -183,7 +196,7 @@ class RoleRepository:
         role_id: UUID,
         user_id: UUID,
         community_id: UUID
-    ) -> CommunityRoleAssignment:
+    ) -> RoleAssignment:
         """
         Asignar un rol de comunidad a un usuario.
 
@@ -194,16 +207,26 @@ class RoleRepository:
             community_id: ID de la comunidad
 
         Returns:
-            CommunityRoleAssignment: Asignación creada o existente
+            RoleAssignment: Asignación creada o existente
         """
+        # Obtener el tenant_id de la comunidad
+        community_result = await session.execute(
+            select(Community.tenant_id).where(Community.id == community_id)
+        )
+        tenant_id = community_result.scalar_one()
+
         # Verificar si la asignación ya existe
         existing = await session.execute(
-            select(CommunityRoleAssignment)
+            select(RoleAssignment)
             .where(
-                CommunityRoleAssignment.role_id == role_id,
-                CommunityRoleAssignment.user_id == user_id,
-                CommunityRoleAssignment.community_id == community_id,
-                CommunityRoleAssignment.deleted_at.is_(None)
+                and_(
+                    RoleAssignment.role_id == role_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'community',
+                    RoleAssignment.scope_id == community_id,
+                    RoleAssignment.tenant_id == tenant_id,
+                    RoleAssignment.deleted_at.is_(None)
+                )
             )
         )
         existing_assignment = existing.scalar_one_or_none()
@@ -213,10 +236,12 @@ class RoleRepository:
             return existing_assignment
 
         # Crear nueva asignación
-        assignment = CommunityRoleAssignment(
+        assignment = RoleAssignment(
             role_id=role_id,
             user_id=user_id,
-            community_id=community_id
+            scope_type='community',
+            scope_id=community_id,
+            tenant_id=tenant_id
         )
         session.add(assignment)
         await session.flush()
@@ -242,14 +267,17 @@ class RoleRepository:
             bool: True si tiene el rol, False si no
         """
         result = await session.execute(
-            select(TenantRoleAssignment)
+            select(RoleAssignment)
             .join(Role)
             .where(
                 and_(
-                    TenantRoleAssignment.user_id == user_id,
-                    TenantRoleAssignment.tenant_id == tenant_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'tenant',
+                    RoleAssignment.scope_id == tenant_id,
+                    RoleAssignment.tenant_id == tenant_id,
                     Role.name == role_name,
-                    Role.scope == RoleScope.TENANT
+                    Role.scope == RoleScope.TENANT,
+                    RoleAssignment.deleted_at.is_(None)
                 )
             )
         )
@@ -275,14 +303,16 @@ class RoleRepository:
             bool: True si tiene el rol, False si no
         """
         result = await session.execute(
-            select(CommunityRoleAssignment)
+            select(RoleAssignment)
             .join(Role)
             .where(
                 and_(
-                    CommunityRoleAssignment.user_id == user_id,
-                    CommunityRoleAssignment.community_id == community_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'community',
+                    RoleAssignment.scope_id == community_id,
                     Role.name == role_name,
-                    Role.scope == RoleScope.COMMUNITY
+                    Role.scope == RoleScope.COMMUNITY,
+                    RoleAssignment.deleted_at.is_(None)
                 )
             )
         )
@@ -306,13 +336,17 @@ class RoleRepository:
             bool: True si tiene el rol, False si no
         """
         result = await session.execute(
-            select(SystemRoleAssignment)
+            select(RoleAssignment)
             .join(Role)
             .where(
                 and_(
-                    SystemRoleAssignment.user_id == user_id,
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == 'system',
+                    RoleAssignment.scope_id.is_(None),
+                    RoleAssignment.tenant_id.is_(None),
                     Role.name == role_name,
-                    Role.scope == RoleScope.SYSTEM
+                    Role.scope == RoleScope.SYSTEM,
+                    RoleAssignment.deleted_at.is_(None)
                 )
             )
         )
@@ -335,13 +369,15 @@ class RoleRepository:
         """
         result = await session.execute(
             select(User)
-            .join(CommunityRoleAssignment, CommunityRoleAssignment.user_id == User.id)
-            .join(Role, Role.id == CommunityRoleAssignment.role_id)
+            .join(RoleAssignment, RoleAssignment.user_id == User.id)
+            .join(Role, Role.id == RoleAssignment.role_id)
             .where(
                 and_(
-                    CommunityRoleAssignment.community_id == community_id,
+                    RoleAssignment.scope_type == 'community',
+                    RoleAssignment.scope_id == community_id,
                     Role.name == "MODERATOR",
-                    Role.scope == RoleScope.COMMUNITY
+                    Role.scope == RoleScope.COMMUNITY,
+                    RoleAssignment.deleted_at.is_(None)
                 )
             )
         )

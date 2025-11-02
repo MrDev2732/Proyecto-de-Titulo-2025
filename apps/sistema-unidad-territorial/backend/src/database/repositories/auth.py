@@ -17,13 +17,12 @@ from src.database import (
     User, 
     UserEmail,
     UserOauthIdentity, 
-    UserSession, 
-    SystemRoleAssignment,
-    TenantRoleAssignment,
-    CommunityRoleAssignment,
+    RoleAssignment,
     UserStatus,
 )
+from src.database.utils import now_chile
 from src.core.logging import get_logger
+from src.core.encryption import get_encryption_service
 
 
 logger = get_logger(__name__)
@@ -51,9 +50,7 @@ class AuthRepository:
             .options(
                 selectinload(User.primary_email),
                 selectinload(User.emails),
-                selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
-                selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
-                selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
+                selectinload(User.role_assignments).selectinload(RoleAssignment.role)
             )
             .where(UserEmail.email == email.lower())
         )
@@ -76,9 +73,7 @@ class AuthRepository:
             .options(
                 selectinload(User.primary_email),
                 selectinload(User.emails),
-                selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
-                selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
-                selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
+                selectinload(User.role_assignments).selectinload(RoleAssignment.role)
             )
             .where(User.id == user_id)
         )
@@ -201,9 +196,7 @@ class OAuthRepository:
             .options(
                 selectinload(UserOauthIdentity.user).selectinload(User.primary_email),
                 selectinload(UserOauthIdentity.user).selectinload(User.emails),
-                selectinload(UserOauthIdentity.user).selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
-                selectinload(UserOauthIdentity.user).selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
-                selectinload(UserOauthIdentity.user).selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
+                selectinload(UserOauthIdentity.user).selectinload(User.role_assignments).selectinload(RoleAssignment.role)
             )
             .where(
                 UserOauthIdentity.provider == provider,
@@ -221,7 +214,8 @@ class OAuthRepository:
         provider_email: str,
         access_token: Optional[str] = None,
         refresh_token: Optional[str] = None,
-        token_expires_at: Optional[datetime] = None
+        token_expires_at: Optional[datetime] = None,
+        token_scope: Optional[str] = None
     ) -> UserOauthIdentity:
         """
         Crear nueva identidad OAuth.
@@ -232,21 +226,26 @@ class OAuthRepository:
             provider: Proveedor OAuth
             provider_user_id: ID del usuario en el proveedor
             provider_email: Email del proveedor
-            access_token: Token de acceso OAuth
-            refresh_token: Token de refresh OAuth
+            access_token: Token de acceso OAuth (será cifrado)
+            refresh_token: Token de refresh OAuth (será cifrado)
             token_expires_at: Fecha de expiración del token
+            token_scope: Scope del token OAuth
 
         Returns:
             UserOauthIdentity: Identidad OAuth creada
         """
+        # Cifrar tokens usando el servicio de cifrado
+        encryption_service = get_encryption_service()
+
         oauth_identity = UserOauthIdentity(
             user_id=user_id,
             provider=provider,
             provider_user_id=provider_user_id,
             provider_email=provider_email,
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_expires_at=token_expires_at
+            encrypted_access_token=encryption_service.encrypt_token(access_token),
+            encrypted_refresh_token=encryption_service.encrypt_token(refresh_token),
+            token_expires_at=token_expires_at,
+            token_scope=token_scope
         )
 
         session.add(oauth_identity)
@@ -260,7 +259,8 @@ class OAuthRepository:
         access_token: Optional[str] = None,
         refresh_token: Optional[str] = None,
         token_expires_at: Optional[datetime] = None,
-        provider_email: Optional[str] = None
+        provider_email: Optional[str] = None,
+        token_scope: Optional[str] = None
     ) -> None:
         """
         Actualizar tokens OAuth.
@@ -268,133 +268,24 @@ class OAuthRepository:
         Args:
             session: Sesión de base de datos
             oauth_identity: Identidad OAuth a actualizar
-            access_token: Nuevo token de acceso
-            refresh_token: Nuevo token de refresh
+            access_token: Nuevo token de acceso (será cifrado)
+            refresh_token: Nuevo token de refresh (será cifrado)
             token_expires_at: Nueva fecha de expiración
             provider_email: Nuevo email del proveedor
+            token_scope: Nuevo scope del token
         """
+        # Cifrar tokens usando el servicio de cifrado
+        encryption_service = get_encryption_service()
+
         if access_token is not None:
-            oauth_identity.access_token = access_token
+            oauth_identity.encrypted_access_token = encryption_service.encrypt_token(access_token)
         if refresh_token is not None:
-            oauth_identity.refresh_token = refresh_token
+            oauth_identity.encrypted_refresh_token = encryption_service.encrypt_token(refresh_token)
         if token_expires_at is not None:
             oauth_identity.token_expires_at = token_expires_at
         if provider_email is not None:
             oauth_identity.provider_email = provider_email
+        if token_scope is not None:
+            oauth_identity.token_scope = token_scope
 
-
-class SessionRepository:
-    """Repository para operaciones con sesiones de usuario."""
-
-    @staticmethod
-    async def create_session(
-        session: AsyncSession,
-        user_id: UUID,
-        access_token_hash: str,
-        refresh_token_hash: Optional[str],
-        expires_at: datetime,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None
-    ) -> UserSession:
-        """
-        Crear nueva sesión de usuario.
-
-        Args:
-            session: Sesión de base de datos
-            user_id: ID del usuario
-            access_token_hash: Hash del access token
-            refresh_token_hash: Hash del refresh token (opcional)
-            expires_at: Fecha de expiración
-            ip_address: Dirección IP del cliente
-            user_agent: User agent del cliente
-
-        Returns:
-            UserSession: Sesión creada
-        """
-        user_session = UserSession(
-            user_id=user_id,
-            access_token_hash=access_token_hash,
-            refresh_token_hash=refresh_token_hash,
-            expires_at=expires_at,
-            ip_address=ip_address,
-            user_agent=user_agent
-        )
-        session.add(user_session)
-        await session.flush()
-        return user_session
-
-    @staticmethod
-    async def find_session_by_access_token(
-        session: AsyncSession,
-        access_token_hash: str
-    ) -> Optional[UserSession]:
-        """
-        Buscar sesión por hash de access token.
-
-        Args:
-            session: Sesión de base de datos
-            access_token_hash: Hash del access token
-
-        Returns:
-            UserSession: Sesión encontrada o None
-        """
-        result = await session.execute(
-            select(UserSession)
-            .options(
-                selectinload(UserSession.user).selectinload(User.primary_email),
-                selectinload(UserSession.user).selectinload(User.emails),
-                selectinload(UserSession.user).selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
-                selectinload(UserSession.user).selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
-                selectinload(UserSession.user).selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
-            )
-            .where(
-                UserSession.access_token_hash == access_token_hash,
-                UserSession.is_active == True
-            )
-        )
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def find_session_by_refresh_token(
-        session: AsyncSession,
-        refresh_token_hash: str
-    ) -> Optional[UserSession]:
-        """
-        Buscar sesión por hash de refresh token.
-
-        Args:
-            session: Sesión de base de datos
-            refresh_token_hash: Hash del refresh token
-
-        Returns:
-            UserSession: Sesión encontrada o None
-        """
-        result = await session.execute(
-            select(UserSession)
-            .options(
-                selectinload(UserSession.user).selectinload(User.primary_email),
-                selectinload(UserSession.user).selectinload(User.emails),
-                selectinload(UserSession.user).selectinload(User.system_role_assignments).selectinload(SystemRoleAssignment.role),
-                selectinload(UserSession.user).selectinload(User.tenant_role_assignments).selectinload(TenantRoleAssignment.role),
-                selectinload(UserSession.user).selectinload(User.community_role_assignments).selectinload(CommunityRoleAssignment.role)
-            )
-            .where(
-                UserSession.refresh_token_hash == refresh_token_hash,
-                UserSession.is_active == True
-            )
-        )
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def revoke_session(
-        session: AsyncSession,
-        user_session: UserSession
-    ) -> None:
-        """
-        Revocar sesión.
-
-        Args:
-            session: Sesión de base de datos
-            user_session: Sesión a revocar
-        """
-        user_session.revoke()
+        oauth_identity.token_last_rotated_at = now_chile()

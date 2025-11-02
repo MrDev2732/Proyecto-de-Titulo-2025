@@ -99,19 +99,9 @@ class User(SoftDeleteBaseModel):
         {'schema': SCHEMA}
     )
 
-    # Role assignments - separated by scope
-    system_role_assignments: Mapped[List["SystemRoleAssignment"]] = relationship(
-        "SystemRoleAssignment",
-        back_populates="user",
-        cascade="all, delete-orphan"
-    )
-    tenant_role_assignments: Mapped[List["TenantRoleAssignment"]] = relationship(
-        "TenantRoleAssignment",
-        back_populates="user",
-        cascade="all, delete-orphan"
-    )
-    community_role_assignments: Mapped[List["CommunityRoleAssignment"]] = relationship(
-        "CommunityRoleAssignment",
+    # Role assignments - unified polymorphic table
+    role_assignments: Mapped[List["RoleAssignment"]] = relationship(
+        "RoleAssignment",
         back_populates="user",
         cascade="all, delete-orphan"
     )
@@ -351,19 +341,9 @@ class Role(BaseModel):
         {'schema': SCHEMA}
     )
 
-    # Role assignments - separated by scope
-    system_assignments: Mapped[List["SystemRoleAssignment"]] = relationship(
-        "SystemRoleAssignment",
-        back_populates="role",
-        cascade="all, delete-orphan"
-    )
-    tenant_assignments: Mapped[List["TenantRoleAssignment"]] = relationship(
-        "TenantRoleAssignment",
-        back_populates="role",
-        cascade="all, delete-orphan"
-    )
-    community_assignments: Mapped[List["CommunityRoleAssignment"]] = relationship(
-        "CommunityRoleAssignment",
+    # Role assignments - unified polymorphic table
+    assignments: Mapped[List["RoleAssignment"]] = relationship(
+        "RoleAssignment",
         back_populates="role",
         cascade="all, delete-orphan"
     )
@@ -442,6 +422,25 @@ class UserOauthIdentity(TenantBaseModel):
     # Relationships
     user: Mapped[User] = relationship("User", back_populates="oauth_identities")
 
+    @property
+    def access_token(self) -> Optional[str]:
+        """Descifrar y obtener el access token."""
+        if self.encrypted_access_token is None:
+            return None
+
+        from src.core.encryption import get_encryption_service
+        encryption_service = get_encryption_service()
+        return encryption_service.decrypt_token(self.encrypted_access_token)
+
+    @property
+    def refresh_token(self) -> Optional[str]:
+        """Descifrar y obtener el refresh token."""
+        if self.encrypted_refresh_token is None:
+            return None
+
+        from src.core.encryption import get_encryption_service
+        encryption_service = get_encryption_service()
+        return encryption_service.decrypt_token(self.encrypted_refresh_token)
 
     def __repr__(self) -> str:
         return f"UserOauthIdentity(id={self.id}, provider={self.provider}, provider_user_id={self.provider_user_id})"
@@ -595,11 +594,6 @@ class AuthenticationLog(TenantBaseModel):
         server_default='false',
         comment="Si se utilizó autenticación multifactor"
     )
-    risk_score: Mapped[Optional[int]] = Column(
-        SmallInteger,
-        nullable=True,
-        comment="Puntuación de riesgo calculada (0-100)"
-    )
 
     # Contexto técnico
     user_agent: Mapped[Optional[str]] = Column(
@@ -617,10 +611,6 @@ class AuthenticationLog(TenantBaseModel):
 
     # Constraints y schema
     __table_args__ = (
-        CheckConstraint(
-            "risk_score IS NULL OR (risk_score >= 0 AND risk_score <= 100)",
-            name='ck_auth_log_risk_score_range'
-        ),
         CheckConstraint(
             "(result = 'SUCCESS' AND failure_reason IS NULL) OR (result = 'FAIL')",
             name='ck_auth_log_success_no_failure_reason'
@@ -655,146 +645,3 @@ class AuthenticationLog(TenantBaseModel):
     def __repr__(self) -> str:
         return (f"AuthenticationLog(id={self.id}, result={self.result}, "
                 f"provider={self.provider}, email={self.email})")
-
-
-class SystemRoleAssignment(SoftDeleteBaseModel):
-    """System-level role assignments (admin, etc.)."""
-
-    __tablename__ = 'system_role_assignments'
-
-    role_id: Mapped[PyUUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.roles.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="Role ID"
-    )
-    user_id: Mapped[PyUUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="User ID"
-    )
-
-    # Constraints and schema
-    __table_args__ = (
-        UniqueConstraint('role_id', 'user_id', name='uq_system_role_assignment'),
-        Index('idx_system_roleass_user', 'user_id'),
-        Index('idx_system_roleass_role', 'role_id'),
-        {'schema': SCHEMA}
-    )
-
-    # Relationships
-    role: Mapped[Role] = relationship("Role", back_populates="system_assignments")
-    user: Mapped[User] = relationship("User", back_populates="system_role_assignments")
-
-    def __repr__(self) -> str:
-        return f"SystemRoleAssignment(id={self.id}, role_id={self.role_id}, user_id={self.user_id})"
-
-
-class TenantRoleAssignment(SoftDeleteBaseModel):
-    """
-    Tenant-level role assignments (municipal_user, municipal_admin).
-
-    INSTITUTIONAL EMAIL REQUIREMENT:
-    Municipal roles require a verified institutional email matching the tenant's domain.
-    This should be enforced by application logic or database trigger:
-
-    CREATE OR REPLACE FUNCTION enforce_tenant_email()
-    RETURNS trigger AS $$
-    BEGIN
-      -- Check if user has verified institutional email for this tenant
-      PERFORM 1
-      FROM tenants t
-      JOIN user_emails e ON e.user_id = NEW.user_id
-      WHERE t.id = NEW.tenant_id
-        AND e.verified_at IS NOT NULL
-        AND e.email_type = 'institutional'
-        AND lower(split_part(e.email, '@', 2)) = lower(t.domain);
-
-      IF NOT FOUND THEN
-        RAISE EXCEPTION 'Verified institutional email required for municipal roles';
-      END IF;
-      
-      RETURN NEW;
-    END; $$ LANGUAGE plpgsql;
-    """
-
-    __tablename__ = 'tenant_role_assignments'
-
-    role_id: Mapped[PyUUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.roles.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="Role ID"
-    )
-    user_id: Mapped[PyUUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="User ID"
-    )
-    tenant_id: Mapped[PyUUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.tenants.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="Tenant ID"
-    )
-
-    # Constraints and schema
-    __table_args__ = (
-        UniqueConstraint('role_id', 'user_id', 'tenant_id', name='uq_tenant_role_assignment'),
-        Index('idx_tenant_roleass_user', 'user_id'),
-        Index('idx_tenant_roleass_tenant', 'tenant_id'),
-        Index('idx_tenant_roleass_role', 'role_id'),
-        {'schema': SCHEMA}
-    )
-
-    # Relationships
-    role: Mapped[Role] = relationship("Role", back_populates="tenant_assignments")
-    user: Mapped[User] = relationship("User", back_populates="tenant_role_assignments")
-    tenant: Mapped["Tenant"] = relationship("Tenant", foreign_keys=[tenant_id])
-
-    def __repr__(self) -> str:
-        return f"TenantRoleAssignment(id={self.id}, role_id={self.role_id}, user_id={self.user_id}, tenant_id={self.tenant_id})"
-
-
-class CommunityRoleAssignment(SoftDeleteBaseModel):
-    """Community-level role assignments (member, moderator)."""
-
-    __tablename__ = 'community_role_assignments'
-
-    role_id: Mapped[PyUUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.roles.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="Role ID"
-    )
-    user_id: Mapped[PyUUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.users.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="User ID"
-    )
-    community_id: Mapped[PyUUID] = Column(
-        UUID(as_uuid=True), 
-        ForeignKey(f'{SCHEMA}.communities.id', ondelete='CASCADE'), 
-        nullable=False,
-        comment="Community ID"
-    )
-
-    # Constraints and schema
-    __table_args__ = (
-        UniqueConstraint('role_id', 'user_id', 'community_id', name='uq_community_role_assignment'),
-        Index('idx_community_roleass_user', 'user_id'),
-        Index('idx_community_roleass_community', 'community_id'),
-        Index('idx_community_roleass_role', 'role_id'),
-        {'schema': SCHEMA}
-    )
-
-    # Relationships
-    role: Mapped[Role] = relationship("Role", back_populates="community_assignments")
-    user: Mapped[User] = relationship("User", back_populates="community_role_assignments")
-    community: Mapped["Community"] = relationship("Community", foreign_keys=[community_id])
-
-    def __repr__(self) -> str:
-        return f"CommunityRoleAssignment(id={self.id}, role_id={self.role_id}, user_id={self.user_id}, community_id={self.community_id})"

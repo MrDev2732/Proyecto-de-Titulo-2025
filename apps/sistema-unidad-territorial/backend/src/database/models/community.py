@@ -14,7 +14,7 @@ from sqlalchemy import (
     String,
 )
 from sqlalchemy.dialects.postgresql import UUID, CITEXT, TIMESTAMP
-from sqlalchemy.orm import relationship, Mapped
+from sqlalchemy.orm import relationship, Mapped, foreign
 
 from src.database import SCHEMA
 from src.database.models.base import BaseModel, SoftDeleteBaseModel
@@ -72,11 +72,11 @@ class Community(SoftDeleteBaseModel):
         back_populates="community",
         cascade="all, delete-orphan"
     )
-    # Role assignments for this community
+    # Role assignments for this community (unified table)
     role_assignments = relationship(
-        "CommunityRoleAssignment",
-        foreign_keys="CommunityRoleAssignment.community_id",
-        back_populates="community"
+        "RoleAssignment",
+        primaryjoin="and_(Community.id == foreign(RoleAssignment.scope_id), RoleAssignment.scope_type == 'community')",
+        viewonly=True
     )
 
     def __repr__(self) -> str:
@@ -125,7 +125,7 @@ class ResidentMembership(SoftDeleteBaseModel):
         comment="Whether the membership is verified"
     )
     verified_at: Mapped[Optional[datetime]] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=True,
         comment="Verification timestamp"
     )
@@ -240,12 +240,12 @@ class RegistrationRequest(BaseModel):
         comment="Moderator who made the decision"
     )
     decided_at: Mapped[Optional[datetime]] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=True,
         comment="Decision timestamp"
     )
     expires_at: Mapped[Optional[datetime]] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=True,
         comment="Request expiration timestamp"
     )

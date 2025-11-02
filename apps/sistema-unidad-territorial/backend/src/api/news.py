@@ -64,7 +64,7 @@ async def get_public_news(
     Obtener noticias públicas activas.
 
     **Endpoint público** - No requiere autenticación.
-    
+
     Retorna las noticias que están actualmente visibles según sus fechas de visibilidad.
     Las noticias se ordenan por fecha de creación (más recientes primero).
 

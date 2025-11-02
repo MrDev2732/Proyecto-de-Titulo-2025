@@ -15,11 +15,12 @@ from src.database.enums import (
     AuthResult,
     AuthFailureReason,
 )
-from src.database.repositories import AuthRepository, OAuthRepository, LoginGatingRepository
+from src.database.repositories.auth import AuthRepository, OAuthRepository
+from src.database.repositories.login_gating import LoginGatingRepository
 from src.services.auth.log_service import create_auth_log_service
 from src.schemas import OAuthUserInfo
 from src.core.config import settings
-from src.database import now_chile
+from src.database.utils import now_chile
 from src.core.logging import get_logger
 
 
@@ -163,9 +164,7 @@ class GoogleOAuthService:
                         method=AuthMethod.OAUTH,
                         result=AuthResult.FAIL,
                         failure_reason=AuthFailureReason.RATE_LIMITED,
-                        ip=ip,
-                        user_agent=user_agent,
-                        geo_country=geo_country
+                        user_agent=user_agent
                     )
                     return None
 
@@ -214,11 +213,9 @@ class GoogleOAuthService:
                         failure_reason = AuthFailureReason.ACCOUNT_SUSPENDED
                         raise Exception("User access check failed after OAuth identity creation")
                 else:
-                    # Usuario no existe o no está activo - crear solicitud de registro automática
-                    await AuthService._create_oauth_registration_request(
-                        session, oauth_info, ip, user_agent, geo_country
-                    )
-                    failure_reason = AuthFailureReason.ACCOUNT_SUSPENDED
+                    # Usuario no existe o no está activo - no permitir login
+                    failure_reason = AuthFailureReason.ACCOUNT_NOT_FOUND
+                    logger.info(f"OAuth user not found or inactive: {oauth_info.email}")
 
                     await auth_log_service.log_authentication_attempt(
                         email=oauth_info.email,
@@ -226,9 +223,7 @@ class GoogleOAuthService:
                         method=AuthMethod.OAUTH,
                         result=AuthResult.FAIL,
                         failure_reason=failure_reason,
-                        ip=ip,
-                        user_agent=user_agent,
-                        geo_country=geo_country
+                        user_agent=user_agent
                     )
                     return None
             else:
@@ -267,9 +262,7 @@ class GoogleOAuthService:
                 method=AuthMethod.OAUTH,
                 result=AuthResult.SUCCESS,
                 user=user,
-                ip=ip,
                 user_agent=user_agent,
-                geo_country=geo_country,
                 tenant_id=getattr(user, 'tenant_id', None)
             )
 
@@ -289,8 +282,6 @@ class GoogleOAuthService:
                 result=AuthResult.FAIL,
                 failure_reason=failure_reason or AuthFailureReason.OAUTH_ERROR,
                 error_code=str(e),
-                ip=ip,
-                user_agent=user_agent,
-                geo_country=geo_country
+                user_agent=user_agent
             )
             return None
