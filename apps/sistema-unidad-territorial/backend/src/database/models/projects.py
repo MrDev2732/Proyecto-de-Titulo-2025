@@ -14,11 +14,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 
 from src.database import SCHEMA
-from src.database.models.base import SoftDeleteBaseModel, OptimisticLockMixin
+from src.database.models.base import TenantSoftDeleteModel, OptimisticLockMixin
 from src.database.enums import ProjectStatus
 
 
-class Project(SoftDeleteBaseModel, OptimisticLockMixin):
+class Project(TenantSoftDeleteModel, OptimisticLockMixin):
     """Community project model."""
 
     __tablename__ = 'projects'
@@ -88,7 +88,7 @@ class Project(SoftDeleteBaseModel, OptimisticLockMixin):
         return f"Project(id={self.id}, title={title_preview}, status={self.status})"
 
 
-class ProjectAttachment(SoftDeleteBaseModel):
+class ProjectAttachment(TenantSoftDeleteModel):
     """Project attachment model."""
     # Constraints and schema
     __table_args__ = {'schema': SCHEMA}
@@ -133,4 +133,4 @@ class ProjectAttachment(SoftDeleteBaseModel):
     project: Mapped[Project] = relationship("Project", back_populates="attachments")
 
     def __repr__(self) -> str:
-        return f"ProjectAttachment(id={self.id}, project_id={self.project_id}, type={self.type})"
+        return f"ProjectAttachment(id={self.id}, project_id={self.project_id}, mime_type={self.mime_type})"
