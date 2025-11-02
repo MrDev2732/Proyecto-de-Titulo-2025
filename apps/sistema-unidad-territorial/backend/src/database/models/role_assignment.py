@@ -17,7 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, Mapped
+from sqlalchemy.orm import relationship, Mapped, foreign
 
 from src.database import SCHEMA
 from src.database.models.base import SoftDeleteBaseModel
@@ -68,6 +68,7 @@ class RoleAssignment(SoftDeleteBaseModel):
     # Tenant para coherencia multi-tenant
     tenant_id: Mapped[Optional[PyUUID]] = Column(
         UUID(as_uuid=True),
+        ForeignKey(f'{SCHEMA}.tenants.id', ondelete='RESTRICT'),
         nullable=True,
         comment="Tenant ID para coherencia (NULL solo para system)"
     )
@@ -108,9 +109,8 @@ class RoleAssignment(SoftDeleteBaseModel):
     )
     community: Mapped[Optional["Community"]] = relationship(
         "Community",
-        foreign_keys=[scope_id],
         viewonly=True,
-        primaryjoin="and_(RoleAssignment.scope_id == Community.id, RoleAssignment.scope_type == 'community')"
+        primaryjoin="and_(foreign(RoleAssignment.scope_id) == Community.id, RoleAssignment.scope_type == 'community')"
     )
 
     @property
