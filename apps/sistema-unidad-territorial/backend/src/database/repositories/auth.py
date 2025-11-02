@@ -50,7 +50,11 @@ class AuthRepository:
             .options(
                 selectinload(User.primary_email),
                 selectinload(User.emails),
-                selectinload(User.role_assignments).selectinload(RoleAssignment.role)
+                selectinload(User.role_assignments).options(
+                    selectinload(RoleAssignment.role),
+                    selectinload(RoleAssignment.tenant),
+                    selectinload(RoleAssignment.community)
+                )
             )
             .where(UserEmail.email == email.lower())
         )
@@ -73,7 +77,11 @@ class AuthRepository:
             .options(
                 selectinload(User.primary_email),
                 selectinload(User.emails),
-                selectinload(User.role_assignments).selectinload(RoleAssignment.role)
+                selectinload(User.role_assignments).options(
+                    selectinload(RoleAssignment.role),
+                    selectinload(RoleAssignment.tenant),
+                    selectinload(RoleAssignment.community)
+                )
             )
             .where(User.id == user_id)
         )
@@ -137,7 +145,6 @@ class AuthRepository:
 
         return user
 
-
     @staticmethod
     async def update_user_password(
         session: AsyncSession,
@@ -196,7 +203,8 @@ class OAuthRepository:
             .options(
                 selectinload(UserOauthIdentity.user).selectinload(User.primary_email),
                 selectinload(UserOauthIdentity.user).selectinload(User.emails),
-                selectinload(UserOauthIdentity.user).selectinload(User.role_assignments).selectinload(RoleAssignment.role)
+                selectinload(UserOauthIdentity.user).selectinload(User.role_assignments).selectinload(RoleAssignment.role),
+                selectinload(UserOauthIdentity.user).selectinload(User.role_assignments).selectinload(RoleAssignment.tenant)
             )
             .where(
                 UserOauthIdentity.provider == provider,

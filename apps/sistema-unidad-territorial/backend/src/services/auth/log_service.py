@@ -12,7 +12,6 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.repositories import AuthenticationLogRepository
-from src.database.auth_security_utils import create_security_analyzer
 from src.database.enums import AuthProvider, AuthMethod, AuthResult, AuthFailureReason
 from src.database import User, UserSession
 from src.core.logging import get_logger
@@ -27,7 +26,6 @@ class AuthenticationLogService:
     def __init__(self, session: AsyncSession, security_profile: str = 'moderate'):
         self.session = session
         self.repository = AuthenticationLogRepository()
-        self.security_analyzer = create_security_analyzer(session, security_profile)
 
     async def log_authentication_attempt(
         self,
@@ -38,12 +36,9 @@ class AuthenticationLogService:
         failure_reason: Optional[AuthFailureReason] = None,
         user: Optional[User] = None,
         user_session: Optional[UserSession] = None,
-        ip: Optional[str] = None,
         user_agent: Optional[str] = None,
-        geo_country: Optional[str] = None,
         error_code: Optional[str] = None,
         mfa_used: bool = False,
-        tenant_id: Optional[UUID] = None,
         request_id: Optional[UUID] = None
     ) -> Dict[str, Any]:
         """
@@ -57,9 +52,7 @@ class AuthenticationLogService:
             failure_reason: Razón del fallo (si aplica)
             user: Usuario (si se identificó)
             user_session: Sesión creada (si el login fue exitoso)
-            ip: Dirección IP del cliente
             user_agent: User agent del navegador
-            geo_country: Código de país ISO-3166 alpha-2
             error_code: Código de error interno
             mfa_used: Si se utilizó MFA
             tenant_id: ID del tenant
@@ -72,21 +65,13 @@ class AuthenticationLogService:
             # Generar request_id si no se proporciona
             if not request_id:
                 request_id = uuid.uuid4()
-
-            # Calcular risk score antes del logging
-            risk_score = 0
-            if ip:
-                risk_score = await self.security_analyzer.calculate_risk_score(
-                    ip=ip,
-                    email=email,
-                    user_agent=user_agent,
-                    geo_country=geo_country
-                )
+            # Obtener tenant_id apropiado para el usuario
+            tenant_id = user.tenant_id if user else None
 
             # Crear log de autenticación
             auth_log = await self.repository.create_auth_log(
                 session=self.session,
-                tenant_id=tenant_id or (user.tenant_id if hasattr(user, 'tenant_id') and user else None),
+                tenant_id=tenant_id,
                 user_id=user.id if user else None,
                 user_session_id=user_session.id if user_session else None,
                 email=email,
@@ -96,10 +81,7 @@ class AuthenticationLogService:
                 failure_reason=failure_reason,
                 error_code=error_code,
                 mfa_used=mfa_used,
-                risk_score=risk_score,
-                ip=ip,
                 user_agent=user_agent,
-                geo_country=geo_country,
                 request_id=request_id
             )
 
@@ -110,9 +92,6 @@ class AuthenticationLogService:
                 'result': result.value,
                 'provider': provider.value,
                 'method': method.value,
-                'ip': ip,
-                'risk_score': risk_score,
-                'geo_country': geo_country,
                 'request_id': str(request_id)
             }
 
@@ -127,7 +106,6 @@ class AuthenticationLogService:
             return {
                 'auth_log': auth_log,
                 'auth_log_id': str(auth_log.id),
-                'risk_score': risk_score,
                 'request_id': request_id,
                 'logged_at': auth_log.created_at
             }
@@ -136,63 +114,6 @@ class AuthenticationLogService:
             await self.session.rollback()
             logger.error(f"Error logging authentication attempt: {e}", exc_info=True)
             raise
-
-    async def check_pre_auth_security(
-        self,
-        ip: str,
-        email: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        geo_country: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Verificar seguridad antes del intento de autenticación.
-
-        Args:
-            ip: Dirección IP del cliente
-            email: Email del intento (opcional)
-            user_agent: User agent del cliente (opcional)
-            geo_country: País de origen (opcional)
-
-        Returns:
-            Dict con recomendaciones de seguridad
-        """
-        try:
-            recommendations = await self.security_analyzer.get_security_recommendations(
-                ip=ip,
-                email=email,
-                user_agent=user_agent,
-                geo_country=geo_country
-            )
-
-            # Log de decisiones de seguridad importantes
-            if recommendations['block_request']:
-                logger.warning(
-                    f"Blocking authentication attempt - IP: {ip}, email: {email}, "
-                    f"risk_score: {recommendations['metrics']['risk_score']}"
-                )
-            elif recommendations['require_mfa']:
-                logger.info(
-                    f"MFA required for authentication - IP: {ip}, email: {email}, "
-                    f"risk_score: {recommendations['metrics']['risk_score']}"
-                )
-
-            return recommendations
-
-        except Exception as e:
-            logger.error(f"Error in pre-auth security check: {e}", exc_info=True)
-            # En caso de error, permitir el intento pero con precaución
-            return {
-                'allow_attempt': True,
-                'require_captcha': True,
-                'require_mfa': False,
-                'require_email_verification': False,
-                'block_request': False,
-                'delay_response': True,
-                'metrics': {
-                    'risk_score': 50,
-                    'error': str(e)
-                }
-            }
 
 
 # Función helper para crear el servicio

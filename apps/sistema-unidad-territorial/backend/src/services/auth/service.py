@@ -26,6 +26,7 @@ from src.database.repositories import (
     RegistrationRequestRepository
 )
 from src.services.auth.log_service import create_auth_log_service
+from src.core.logging import get_logger
 from src.core.security import (
     verify_password, 
     get_password_hash, 
@@ -39,7 +40,6 @@ from src.schemas import (
     OAuthUserInfo,
     RoleResponse
 )
-from src.core.config import settings
 from src.core.logging import get_logger
 
 
@@ -61,12 +61,10 @@ class AuthService:
             List[str]: Lista de nombres de roles únicos
         """
         role_names = []
-        # Agregar roles de sistema
-        role_names.extend([assignment.role.name for assignment in user.system_role_assignments])
-        # Agregar roles de tenant
-        role_names.extend([assignment.role.name for assignment in user.tenant_role_assignments])
-        # Agregar roles de comunidad
-        role_names.extend([assignment.role.name for assignment in user.community_role_assignments])
+        # Obtener todos los roles del modelo unificado RoleAssignment
+        for assignment in user.role_assignments:
+            if assignment.role:
+                role_names.append(assignment.role.name)
 
         return list(set(role_names))
 
@@ -83,35 +81,16 @@ class AuthService:
         """
         unique_roles = {}
 
-        # Procesar roles de sistema
-        for assignment in user.system_role_assignments:
-            role_id = assignment.role.id
-            if role_id not in unique_roles:
-                unique_roles[role_id] = RoleResponse(
-                    id=assignment.role.id,
-                    name=assignment.role.name,
-                    created_at=assignment.role.created_at
-                )
-
-        # Procesar roles de tenant
-        for assignment in user.tenant_role_assignments:
-            role_id = assignment.role.id
-            if role_id not in unique_roles:
-                unique_roles[role_id] = RoleResponse(
-                    id=assignment.role.id,
-                    name=assignment.role.name,
-                    created_at=assignment.role.created_at
-                )
-
-        # Procesar roles de comunidad
-        for assignment in user.community_role_assignments:
-            role_id = assignment.role.id
-            if role_id not in unique_roles:
-                unique_roles[role_id] = RoleResponse(
-                    id=assignment.role.id,
-                    name=assignment.role.name,
-                    created_at=assignment.role.created_at
-                )
+        # Procesar todos los roles del modelo unificado RoleAssignment
+        for assignment in user.role_assignments:
+            if assignment.role:
+                role_id = assignment.role.id
+                if role_id not in unique_roles:
+                    unique_roles[role_id] = RoleResponse(
+                        id=assignment.role.id,
+                        name=assignment.role.name,
+                        created_at=assignment.role.created_at
+                    )
 
         return list(unique_roles.values())
 
@@ -120,10 +99,7 @@ class AuthService:
         session: AsyncSession,
         email: str,
         password: str,
-        ip: Optional[str] = None,
         user_agent: Optional[str] = None,
-        geo_country: Optional[str] = None,
-        tenant_id: Optional[UUID] = None
     ) -> Optional[tuple[User, UUID]]:
         """
         Autenticar usuario con email y contraseña incluyendo logging de seguridad.
@@ -132,10 +108,7 @@ class AuthService:
             session: Sesión de base de datos
             email: Email del usuario
             password: Contraseña en texto plano
-            ip: Dirección IP del cliente
             user_agent: User agent del navegador
-            geo_country: Código de país ISO-3166 alpha-2
-            tenant_id: ID del tenant
 
         Returns:
             tuple[User, UUID]: Usuario autenticado y auth_log_id, o None si las credenciales son inválidas
@@ -146,31 +119,6 @@ class AuthService:
         failure_reason = None
 
         try:
-            # Verificar seguridad pre-autenticación
-            # Solo hacer verificación si tenemos una IP válida (y no es localhost en desarrollo)
-            if ip and settings.environment != "DEVELOPMENT":
-                security_check = await auth_log_service.check_pre_auth_security(
-                    ip=ip,
-                    email=email,
-                    user_agent=user_agent,
-                    geo_country=geo_country
-                )
-
-                # Si está bloqueado, registrar y retornar None
-                if security_check['block_request']:
-                    await auth_log_service.log_authentication_attempt(
-                        email=email,
-                        provider=AuthProvider.LOCAL,
-                        method=AuthMethod.PASSWORD,
-                        result=AuthResult.FAIL,
-                        failure_reason=AuthFailureReason.RATE_LIMITED,
-                        ip=ip,
-                        user_agent=user_agent,
-                        geo_country=geo_country,
-                        tenant_id=tenant_id
-                    )
-                    return None
-
             # Verificar si el usuario puede hacer login (gated authentication)
             can_login = await LoginGatingRepository.can_user_login_by_email(session, email)
 
@@ -208,10 +156,7 @@ class AuthService:
                 result=result,
                 failure_reason=failure_reason,
                 user=user,
-                ip=ip,
                 user_agent=user_agent,
-                geo_country=geo_country,
-                tenant_id=tenant_id
             )
 
         if result == AuthResult.SUCCESS:
@@ -332,9 +277,7 @@ class AuthService:
     async def create_session_for_user(
         session: AsyncSession,
         user: User,
-        ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
-        geo_country: Optional[str] = None,
         provider: AuthProvider = AuthProvider.LOCAL,
         method: AuthMethod = AuthMethod.PASSWORD,
         mfa_used: bool = False,
@@ -346,9 +289,7 @@ class AuthService:
         Args:
             session: Sesión de base de datos
             user: Usuario para crear la sesión
-            ip_address: Dirección IP del cliente
             user_agent: User agent del cliente
-            geo_country: Código de país
             provider: Proveedor de autenticación
             method: Método de autenticación
             mfa_used: Si se utilizó MFA
@@ -365,7 +306,6 @@ class AuthService:
             user.id, 
             user.email, 
             unique_role_names,
-            ip_address=ip_address,
             user_agent=user_agent
         )
 
@@ -373,10 +313,10 @@ class AuthService:
         user_session = await SessionRepository.create_session(
             session,
             user_id=user.id,
+            tenant_id=user.tenant_id,
             access_token_hash=token_data["access_token_hash"],
             refresh_token_hash=token_data["refresh_token_hash"],
             expires_at=token_data["expires_at"],
-            ip_address=ip_address,
             user_agent=user_agent
         )
 
@@ -389,11 +329,8 @@ class AuthService:
                 result=AuthResult.SUCCESS,
                 user=user,
                 user_session=user_session,
-                ip=ip_address,
                 user_agent=user_agent,
-                geo_country=geo_country,
                 mfa_used=mfa_used,
-                tenant_id=getattr(user, 'tenant_id', None)
             )
 
         await session.commit()
@@ -446,7 +383,6 @@ class AuthService:
     async def refresh_user_session(
         session: AsyncSession,
         refresh_token: str,
-        ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
@@ -455,7 +391,6 @@ class AuthService:
         Args:
             session: Sesión de base de datos
             refresh_token: Token de refresh
-            ip_address: Dirección IP del cliente
             user_agent: User agent del cliente
 
         Returns:
@@ -484,7 +419,6 @@ class AuthService:
         return await AuthService.create_session_for_user(
             session,
             user_session.user,
-            ip_address=ip_address,
             user_agent=user_agent
         )
 
@@ -520,9 +454,7 @@ class AuthService:
     async def _create_oauth_registration_request(
         session: AsyncSession,
         oauth_info: OAuthUserInfo,
-        ip: Optional[str] = None,
         user_agent: Optional[str] = None,
-        geo_country: Optional[str] = None
     ) -> None:
         """
         Crear solicitud de registro automática para usuarios OAuth no aprobados.
@@ -530,9 +462,7 @@ class AuthService:
         Args:
             session: Sesión de base de datos
             oauth_info: Información del usuario OAuth
-            ip: Dirección IP del cliente
             user_agent: User agent del navegador
-            geo_country: Código de país
         """
         try:
             # Verificar si ya existe una solicitud pendiente

@@ -86,30 +86,6 @@ class AuthenticationLogRepository:
         return auth_log
 
     @staticmethod
-    async def count_failures_by_ip(
-        session: AsyncSession,
-        ip: str,
-        minutes: int = 10
-    ) -> int:
-        """
-        Contar fallos por IP en ventana de tiempo.
-        
-        NOTA: El modelo actual no tiene campo 'ip', este método siempre retornará 0.
-        Se mantiene por compatibilidad pero necesita que se agregue el campo 'ip' al modelo.
-
-        Args:
-            session: Sesión de base de datos
-            ip: Dirección IP
-            minutes: Ventana de tiempo en minutos
-
-        Returns:
-            int: Número de fallos (siempre 0 hasta que se agregue el campo 'ip')
-        """
-        # TODO: Agregar campo 'ip' al modelo AuthenticationLog
-        logger.warning("count_failures_by_ip: El campo 'ip' no existe en el modelo AuthenticationLog")
-        return 0
-
-    @staticmethod
     async def count_failures_by_email(
         session: AsyncSession,
         email: str,
@@ -138,38 +114,6 @@ class AuthenticationLogRepository:
             )
         )
         return result.scalar() or 0
-
-    @staticmethod
-    async def get_ip_analysis(
-        session: AsyncSession,
-        ip: str,
-        days: int = 7
-    ) -> Dict[str, Any]:
-        """
-        Obtener análisis completo de una IP.
-        
-        NOTA: El modelo actual no tiene campo 'ip', este método siempre retornará datos vacíos.
-        Se mantiene por compatibilidad pero necesita que se agregue el campo 'ip' al modelo.
-
-        Args:
-            session: Sesión de base de datos
-            ip: Dirección IP
-            days: Días hacia atrás para el análisis
-
-        Returns:
-            Dict: Análisis de la IP (siempre vacío hasta que se agregue el campo 'ip')
-        """
-        # TODO: Agregar campo 'ip' al modelo AuthenticationLog
-        logger.warning("get_ip_analysis: El campo 'ip' no existe en el modelo AuthenticationLog")
-        return {
-            'total_attempts': 0,
-            'failed_attempts': 0,
-            'unique_emails': 0,
-            'failure_rate': 0.0,
-            'avg_risk_score': 0.0,
-            'first_seen': None,
-            'last_seen': None
-        }
 
     @staticmethod
     async def get_email_analysis(
@@ -209,7 +153,6 @@ class AuthenticationLogRepository:
             return {
                 'total_attempts': 0,
                 'failed_attempts': 0,
-                'unique_ips': 0,
                 'unique_countries': 0,
                 'failure_rate': 0.0,
                 'avg_risk_score': 0.0
@@ -220,39 +163,13 @@ class AuthenticationLogRepository:
         return {
             'total_attempts': row.total_attempts,
             'failed_attempts': row.failed_attempts,
-            'unique_ips': 0,  # TODO: Agregar campo 'ip' al modelo
-            'unique_countries': 0,  # TODO: Agregar campo 'geo_country' al modelo
             'failure_rate': round(failure_rate, 2),
             'avg_risk_score': 0
         }
 
     @staticmethod
-    async def get_recent_countries_for_email(
-        session: AsyncSession,
-        email: str,
-        days: int = 30,
-        limit: int = 3
-    ) -> List[str]:
-        """
-        Obtener países recientes para un email (solo éxitos).
-
-        Args:
-            session: Sesión de base de datos
-            email: Email del usuario
-            days: Días hacia atrás para buscar
-            limit: Número máximo de países
-
-        Returns:
-            List[str]: Lista de códigos de país (siempre vacía hasta que se agregue el campo 'geo_country')
-        """
-        # TODO: Agregar campo 'geo_country' al modelo AuthenticationLog
-        logger.warning("get_recent_countries_for_email: El campo 'geo_country' no existe en el modelo AuthenticationLog")
-        return []
-
-    @staticmethod
     async def count_recent_attempts(
         session: AsyncSession,
-        ip: Optional[str] = None,
         email: Optional[str] = None,
         minutes: int = 5
     ) -> int:
@@ -261,7 +178,6 @@ class AuthenticationLogRepository:
 
         Args:
             session: Sesión de base de datos
-            ip: Dirección IP (opcional, ignorado hasta que se agregue el campo 'ip')
             email: Email (opcional)
             minutes: Ventana de tiempo en minutos
 
@@ -274,10 +190,6 @@ class AuthenticationLogRepository:
 
         if email:
             conditions.append(AuthenticationLog.email == email.lower())
-        elif ip:
-            # TODO: Agregar campo 'ip' al modelo AuthenticationLog
-            logger.warning("count_recent_attempts: El campo 'ip' no existe en el modelo AuthenticationLog")
-            return 0
         else:
             return 0
 

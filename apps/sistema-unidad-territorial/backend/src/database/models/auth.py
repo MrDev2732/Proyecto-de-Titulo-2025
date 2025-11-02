@@ -138,6 +138,19 @@ class User(SoftDeleteBaseModel):
         """Check if primary email is verified."""
         return self.primary_email.is_verified if self.primary_email else False
 
+    @property
+    def tenant_id(self) -> Optional[PyUUID]:
+        """
+        Get tenant ID from the first active role assignment.
+        Útil para logging y operaciones multi-tenant.
+        """
+        if self.role_assignments:
+            for assignment in self.role_assignments:
+                # Filtrar role_assignments soft-deleted
+                if assignment.tenant_id and not assignment.is_deleted:
+                    return assignment.tenant_id
+        return None
+
     def get_verified_emails(self) -> List["UserEmail"]:
         """Get all verified emails for this user."""
         return [email for email in self.emails if email.is_verified]
@@ -194,24 +207,24 @@ class User(SoftDeleteBaseModel):
         """Format RUT with standard Chilean format (XX.XXX.XXX-X)."""
         if not self.rut:
             return None
-        
+
         # Remove any existing formatting
         clean_rut = ''.join(filter(str.isalnum, self.rut.upper()))
-        
+
         if len(clean_rut) < 8:
             return self.rut  # Return as-is if too short
-        
+
         # Split into number and verification digit
         rut_number = clean_rut[:-1]
         verification_digit = clean_rut[-1]
-        
+
         # Add dots every 3 digits from right to left
         formatted_number = ""
         for i, digit in enumerate(reversed(rut_number)):
             if i > 0 and i % 3 == 0:
                 formatted_number = "." + formatted_number
             formatted_number = digit + formatted_number
-        
+
         return f"{formatted_number}-{verification_digit}"
 
     def __repr__(self) -> str:

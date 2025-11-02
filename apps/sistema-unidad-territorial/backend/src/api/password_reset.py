@@ -24,14 +24,6 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/password-reset", tags=["Password Reset"])
 
 
-def get_client_ip(request: Request) -> str:
-    """Obtener IP del cliente desde el request."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 @router.post(
     "/request",
     response_model=PasswordResetResponse,
@@ -57,7 +49,6 @@ async def request_password_reset(
     """
 
     # Obtener información del cliente
-    ip_address = get_client_ip(request)
     user_agent = request.headers.get("user-agent")
 
     # Crear servicio con sesión asíncrona
@@ -66,7 +57,6 @@ async def request_password_reset(
     try:
         result = await password_service.request_password_reset(
             request_data,
-            ip_address=ip_address,
             user_agent=user_agent
         )
         return result

@@ -266,7 +266,6 @@ def create_user_tokens_with_session(
     user_id: UUID, 
     email: str, 
     roles: list[str],
-    ip_address: Optional[str] = None,
     user_agent: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -276,7 +275,6 @@ def create_user_tokens_with_session(
         user_id: ID del usuario
         email: Email del usuario
         roles: Lista de roles del usuario
-        ip_address: Dirección IP del cliente
         user_agent: User agent del cliente
 
     Returns:
@@ -308,6 +306,5 @@ def create_user_tokens_with_session(
         "expires_at": expires_at,
         "expires_in": settings.api.access_token_expire_minutes * 60,  # En segundos
         "token_type": "bearer",
-        "ip_address": ip_address,
         "user_agent": user_agent
     }

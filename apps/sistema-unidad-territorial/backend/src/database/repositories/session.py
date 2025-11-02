@@ -24,6 +24,7 @@ class SessionRepository:
     async def create_session(
         session: AsyncSession,
         user_id: UUID,
+        tenant_id: UUID,
         access_token_hash: str,
         refresh_token_hash: Optional[str],
         expires_at: datetime,
@@ -35,6 +36,7 @@ class SessionRepository:
         Args:
             session: Sesión de base de datos
             user_id: ID del usuario
+            tenant_id: ID del tenant
             access_token_hash: Hash del access token
             refresh_token_hash: Hash del refresh token (opcional)
             expires_at: Fecha de expiración
@@ -45,6 +47,7 @@ class SessionRepository:
         """
         user_session = UserSession(
             user_id=user_id,
+            tenant_id=tenant_id,
             access_token_hash=access_token_hash,
             refresh_token_hash=refresh_token_hash,
             expires_at=expires_at,
