@@ -42,7 +42,6 @@ class PasswordResetService:
 
         Args:
             request: Datos de la solicitud
-            ip_address: IP del cliente
             user_agent: User agent del cliente
 
         Returns:
