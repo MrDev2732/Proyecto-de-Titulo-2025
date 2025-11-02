@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
-from sqlalchemy.orm import relationship, Mapped
+from sqlalchemy.orm import relationship, Mapped, foreign
 
 from src.database import SCHEMA
 from src.database.models.base import BaseModel, SoftDeleteBaseModel
@@ -39,6 +39,14 @@ class Tenant(SoftDeleteBaseModel):
         Text, 
         nullable=True,
         comment="Email domain for institutional emails (e.g., 'recoleta.cl')"
+    )
+
+    # Relationships
+    # Role assignments for this tenant (unified table)
+    role_assignments = relationship(
+        "RoleAssignment",
+        primaryjoin="and_(Tenant.id == foreign(RoleAssignment.scope_id), RoleAssignment.scope_type == 'tenant')",
+        viewonly=True
     )
 
     # Only include created_at (inherited from BaseModel),
@@ -104,12 +112,12 @@ class Outbox(BaseModel):
         comment="Maximum delivery attempts before marking as failed"
     )
     next_attempt_at: Mapped[Optional[datetime]] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=True,
         comment="Next delivery attempt timestamp"
     )
     processed_at: Mapped[Optional[datetime]] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=True,
         comment="Timestamp when successfully processed"
     )
@@ -268,7 +276,7 @@ class AuditLog(BaseModel):
 
     # Contextual information
     occurred_at: Mapped[datetime] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=False, 
         default=now_chile,
         server_default=func.now(),
@@ -306,7 +314,7 @@ class AuditLog(BaseModel):
     actor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[actor_id])
 
     def __repr__(self) -> str:
-        return f"AuditLog(id={self.id}, action={self.action}, entity={self.entity}, timestamp={self.timestamp})"
+        return f"AuditLog(id={self.id}, action={self.action}, entity={self.entity}, occurred_at={self.occurred_at})"
 
 
 class PasswordResetToken(BaseModel):
@@ -335,12 +343,12 @@ class PasswordResetToken(BaseModel):
 
     # Control de expiración y uso
     expires_at: Mapped[datetime] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=False,
         comment="Fecha y hora de expiración del token"
     )
     consumed_at: Mapped[Optional[datetime]] = Column(
-        TIMESTAMP,
+        TIMESTAMP(timezone=True),
         nullable=True,
         comment="Fecha y hora cuando se consumió el token"
     )
@@ -400,7 +408,6 @@ class PasswordResetToken(BaseModel):
 
         return cls(
             user_id=user_id,
-            code=cls.generate_code(),
             token=cls.generate_token(),
             expires_at=expires_at,
             user_agent=user_agent
