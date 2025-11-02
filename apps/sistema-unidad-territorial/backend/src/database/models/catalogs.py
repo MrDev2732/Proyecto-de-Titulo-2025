@@ -5,8 +5,10 @@ Estos catálogos reemplazan los enums de string por tablas con FK,
 siguiendo las decisiones de base del plan de saneamiento.
 """
 
-from sqlalchemy import Column, String, Text, Integer
+from sqlalchemy import Column, String, Text, Integer, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped
+from uuid import UUID as PyUUID
 
 from src.database import SCHEMA
 from src.database.models.base import BaseModel
@@ -178,8 +180,9 @@ class TenantFolioSeq(BaseModel):
     __tablename__ = 'tenant_folio_seq'
     __table_args__ = {'schema': SCHEMA}
 
-    tenant_id: Mapped[str] = Column(
-        String(36),
+    tenant_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True),
+        ForeignKey(f'{SCHEMA}.tenants.id', ondelete='CASCADE'),
         primary_key=True,
         comment="ID del tenant"
     )
