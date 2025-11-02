@@ -240,7 +240,7 @@ class AuthenticationTriggers:
                 ) RETURNS INTEGER AS $$
                 DECLARE
                     deleted_count INTEGER;
-                    cutoff_date TIMESTAMPTZ;
+                    cutoff_date TIMESTAMP;
                 BEGIN
                     cutoff_date := now() - (retention_months || ' months')::INTERVAL;
 
