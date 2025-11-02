@@ -106,9 +106,9 @@ def validate_certificate_issued(mapper, connection, target):
     Equivalent to the trg_certificado_emitido_chk() trigger in PostgreSQL.
     """
     if (target.status == CertificateStatus.ISSUED and 
-        (target.pdf_url is None or target.pdf_sha256 is None)):
+        (target.pdf_bucket is None or target.pdf_storage_key is None or target.pdf_sha256 is None)):
         raise IntegrityError(
-            "Cannot mark as ISSUED without pdf_url and pdf_sha256",
+            "Cannot mark as ISSUED without pdf_bucket, pdf_storage_key and pdf_sha256",
             None,
             None
         )
