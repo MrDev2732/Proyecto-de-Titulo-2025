@@ -17,15 +17,6 @@ from src.database.repositories import (
 )
 from src.database.enums import UserStatus, RoleScope, MembershipStatus
 from src.database.models import Tenant
-from src.database.triggers.community_triggers import (
-    LIMIT_MODERATORS_FUNCTION,
-    DROP_LIMIT_MODERATORS_TRIGGER,
-    CREATE_LIMIT_MODERATORS_TRIGGER,
-    LOGIN_GATING_VIEW,
-    CAN_USER_LOGIN_FUNCTION,
-    CAN_OAUTH_LOGIN_FUNCTION
-)
-from src.database.triggers.auth_triggers import AuthenticationTriggers
 from src.core.security import get_password_hash
 from src.core.logging import get_logger
 
@@ -445,56 +436,6 @@ class AuthInitializer:
             raise
 
     @staticmethod
-    async def setup_auth_triggers(session: AsyncSession) -> None:
-        """
-        Configurar triggers y vistas de autenticación.
-
-        Args:
-            session: Sesión de base de datos
-        """
-        logger.info("🔧 Configurando triggers de autenticación...")
-
-        try:
-            await AuthenticationTriggers.setup_all_auth_triggers(session)
-            logger.info("✅ Triggers de autenticación configurados")
-
-        except Exception as e:
-            logger.warning(f"⚠️ No se pudieron configurar los triggers: {e}")
-            logger.info("ℹ️ Los triggers se configurarán después de ejecutar las migraciones de la base de datos")
-            # No hacer rollback ni raise, solo continuar
-
-    @staticmethod
-    async def setup_community_triggers(session: AsyncSession) -> None:
-        """
-        Configurar triggers y funciones específicos de comunidades.
-
-        Args:
-            session: Sesión de base de datos
-        """
-        logger.info("🔧 Configurando triggers de comunidad...")
-
-        try:
-            # Crear función para limitar moderadores
-            await session.execute(LIMIT_MODERATORS_FUNCTION)
-
-            # Crear trigger para limitar moderadores
-            await session.execute(DROP_LIMIT_MODERATORS_TRIGGER)
-            await session.execute(CREATE_LIMIT_MODERATORS_TRIGGER)
-
-            # Crear vista y funciones de control de login
-            await session.execute(LOGIN_GATING_VIEW)
-            await session.execute(CAN_USER_LOGIN_FUNCTION)
-            await session.execute(CAN_OAUTH_LOGIN_FUNCTION)
-
-            await session.commit()
-            logger.info("✅ Triggers de comunidad configurados")
-
-        except Exception as e:
-            logger.warning(f"⚠️ No se pudieron configurar los triggers de comunidad: {e}")
-            logger.info("ℹ️ Los triggers de comunidad se configurarán después de ejecutar las migraciones")
-            # No hacer rollback ni raise, solo continuar
-
-    @staticmethod
     async def initialize_auth_data(
         session: AsyncSession,
         admin_email: str = "vin.orellana@duocuc.cl",
@@ -540,14 +481,6 @@ class AuthInitializer:
             if create_demo_data:
                 await AuthInitializer.setup_demo_community_data(session, admin_email)
 
-            # Configurar triggers de autenticación si se solicita
-            if setup_triggers:
-                await AuthInitializer.setup_auth_triggers(session)
-
-            # Configurar funciones de comunidad si se solicita
-            if setup_community_features:
-                await AuthInitializer.setup_community_triggers(session)
-
             logger.info("✅ Configuración completa del sistema terminada")
 
         except Exception as e:
@@ -571,24 +504,5 @@ class AuthInitializer:
 
         except Exception as e:
             logger.error(f"❌ Error configurando triggers: {e}")
-            await session.rollback()
-            raise
-
-    @staticmethod
-    async def drop_auth_triggers(session: AsyncSession) -> None:
-        """
-        Eliminar todos los triggers de autenticación.
-
-        Args:
-            session: Sesión de base de datos
-        """
-        logger.info("🗑️ Eliminando triggers de autenticación...")
-
-        try:
-            await AuthenticationTriggers.drop_all_auth_triggers(session)
-            logger.info("✅ Triggers de autenticación eliminados")
-
-        except Exception as e:
-            logger.error(f"❌ Error eliminando triggers: {e}")
             await session.rollback()
             raise
