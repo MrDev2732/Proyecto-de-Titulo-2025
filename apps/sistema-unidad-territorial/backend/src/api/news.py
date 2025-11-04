@@ -10,7 +10,7 @@ from sqlalchemy import select, and_, or_
 
 from src.database.session import get_db_session
 from src.database.models import News
-from src.database.repositories.news import AsyncNewsRepository
+from src.database.repositories.news import NewsRepository
 from src.schemas.news import NewsCreate, NewsUpdate, NewsResponse, NewsListResponse
 from src.schemas import ErrorResponse
 from src.core.logging import get_logger
@@ -18,18 +18,11 @@ from src.database.utils import now_chile
 from uuid import UUID
 from src.core.dependencies import get_current_user  # Ajusta a tu proyecto real
 from typing import Annotated
+from src.database.models import Tenant
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/news", tags=["Noticias"])
 
-# Utilidad para obtener un UUID de tenant válido automáticamente
-async def get_any_valid_tenant(session: AsyncSession) -> UUID:
-    from src.database.models.tenant import Tenant
-    result = await session.execute(select(Tenant.id))
-    tenant_id = result.scalar_one_or_none()
-    if tenant_id is None:
-        raise HTTPException(status_code=422, detail="No existen tenants cargados en la base de datos")
-    return tenant_id
 
 # Endpoint público de paginación
 @router.get(
@@ -104,6 +97,7 @@ async def get_public_news(
             detail="Error interno del servidor al obtener las noticias"
         )
 
+
 # -------------------- ENDPOINTS CRUD --------------------
 # Endpoint para crear noticia (POST, usa current_user.tenant_id SIEMPRE)
 @router.post("/", response_model=NewsResponse, summary="Crear noticia", description="Crea una noticia nueva", status_code=201)
@@ -113,7 +107,7 @@ async def create_news(
     current_user=Depends(get_current_user)
 ):
     try:
-        repo = AsyncNewsRepository(session)
+        repo = NewsRepository(session)
         noticia = News(
             title=news.title,
             body=news.body,
@@ -135,11 +129,12 @@ async def create_news(
         logger.error(f"❌ Error creating news: {e}")
         raise HTTPException(status_code=400, detail="No se pudo crear la noticia")
 
+
 # Endpoint para editar noticia (PUT). Solo puedes editar si es de tu tenant
 @router.post("/{news_id}", response_model=NewsResponse, summary="Editar noticia", description="Edita los detalles de una noticia")
 async def update_news(news_id: str, news_data: NewsUpdate, session: AsyncSession = Depends(get_db_session), current_user=Depends(get_current_user)):
     try:
-        repo = AsyncNewsRepository(session)
+        repo = NewsRepository(session)
         noticia = await repo.get(news_id)
         if not noticia:
             raise HTTPException(status_code=404, detail="Noticia no encontrada")
@@ -164,11 +159,12 @@ async def update_news(news_id: str, news_data: NewsUpdate, session: AsyncSession
         logger.error(f"❌ Error updating news: {e}")
         raise HTTPException(status_code=400, detail="No se pudo editar la noticia")
 
+
 # Endpoint para deshabilitar noticia (soft delete). Solo si es de tu tenant
 @router.delete("/{news_id}", summary="Deshabilitar noticia (soft delete)", description="Deshabilita una noticia en vez de eliminarla físicamente", status_code=204)
 async def disable_news(news_id: str, session: AsyncSession = Depends(get_db_session), current_user=Depends(get_current_user)):
     try:
-        repo = AsyncNewsRepository(session)
+        repo = NewsRepository(session)
         noticia = await repo.get(news_id)
         if not noticia:
             raise HTTPException(status_code=404, detail="Noticia no encontrada")
