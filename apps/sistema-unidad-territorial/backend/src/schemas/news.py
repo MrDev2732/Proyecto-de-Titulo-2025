@@ -23,13 +23,13 @@ class NewsCreate(BaseModel):
             )
         return values
 
+
 class NewsUpdate(BaseModel):
     """Schema para edición de noticia (campos opcionales)."""
     title: Optional[str] = None
     body: Optional[str] = None
     visible_from: Optional[datetime] = None
     visible_until: Optional[datetime] = None
-
   
     def validate_dates(cls, values):
         visible_from = values.get('visible_from')
@@ -44,6 +44,7 @@ class NewsUpdate(BaseModel):
             )
         return values
 
+
 class NewsResponse(BaseModel):
     """Schema de respuesta para una noticia individual."""
     id: str
@@ -56,6 +57,7 @@ class NewsResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class NewsListResponse(BaseModel):
     """Schema para respuesta de lista paginada de noticias."""
