@@ -6,47 +6,8 @@ from src.database.utils import now_chile
 from datetime import datetime
 from sqlalchemy import select
 
+
 class NewsRepository:
-    def __init__(self, db: Session):
-        self.db = db
-
-    def create(self, news: News) -> News:
-        self.db.add(news)
-        self.db.commit()
-        self.db.refresh(news)
-        return news
-
-    def get(self, news_id: int) -> Optional[News]:
-        return (
-            self.db.query(News)
-            .filter(News.id == news_id, News.deleted_at == None)
-            .first()
-        )
-
-    def list(self, only_active: bool = True) -> List[News]:
-        query = self.db.query(News).filter(News.deleted_at == None)
-        if only_active:
-            now = now_chile()
-            query = query.filter(News.visible_from <= now)
-            query = query.filter((News.visible_until == None) | (News.visible_until >= now))
-        return query.all()
-
-    def disable(self, news_id: int) -> Optional[News]:
-        news = self.get(news_id)
-        if news:
-            news.deleted_at = datetime.utcnow()  # o now_chile() si prefieres zona Chile
-            self.db.commit()
-            self.db.refresh(news)
-        return news
-
-    def delete(self, news_id: int) -> Optional[News]:
-        news = self.db.query(News).filter(News.id == news_id).first()
-        if news:
-            self.db.delete(news)
-            self.db.commit()
-        return news
-
-class AsyncNewsRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
