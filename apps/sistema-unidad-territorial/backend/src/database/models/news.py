@@ -1,10 +1,11 @@
 from datetime import datetime
 from typing import Optional
+from uuid import UUID as PyUUID
 
-from sqlalchemy import Column, Text, CheckConstraint, Index
-from sqlalchemy.orm import Mapped
+from sqlalchemy import Column, Text, CheckConstraint, Index, ForeignKey
+from sqlalchemy.orm import Mapped, relationship
 
-from sqlalchemy.dialects.postgresql import TIMESTAMP
+from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 
 from src.database import SCHEMA
 from src.database.models.base import TenantSoftDeleteModel
@@ -26,6 +27,14 @@ class News(TenantSoftDeleteModel):
         Text, 
         nullable=False,
         comment="News content"
+    )
+
+    # Community association
+    community_id: Mapped[PyUUID] = Column(
+        UUID(as_uuid=True), 
+        ForeignKey(f'{SCHEMA}.communities.id', ondelete='CASCADE'), 
+        nullable=False,
+        comment="Community ID to which this news belongs"
     )
 
     # Temporal visibility control
@@ -50,9 +59,18 @@ class News(TenantSoftDeleteModel):
         Index('idx_news_visibility', 'visible_from', 'visible_until'),
         # Index for tenant-specific active news queries
         Index('idx_news_tenant_active', 'tenant_id', 'visible_from', 'visible_until'),
+        # Index for community-specific active news queries
+        Index('idx_news_community_active', 'community_id', 'visible_from', 'visible_until'),
         # Index for ordering by creation date
         Index('idx_news_created', 'created_at'),
         {'schema': SCHEMA}
+    )
+
+    # Relationships
+    community = relationship(
+        "Community",
+        foreign_keys=[community_id],
+        back_populates=None
     )
 
     def is_active(self, check_date: Optional[datetime] = None) -> bool:
