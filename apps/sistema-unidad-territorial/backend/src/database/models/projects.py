@@ -62,10 +62,10 @@ class Project(TenantSoftDeleteModel, OptimisticLockMixin):
     # Constraints and schema
     __table_args__ = (
         CheckConstraint(
-            f"status IN ('{ProjectStatus.PENDING}', "
-            f"'{ProjectStatus.IN_PROGRESS}', "
-            f"'{ProjectStatus.COMPLETED}', "
-            f"'{ProjectStatus.REJECTED}')",
+            f"status IN ('{ProjectStatus.PENDING.value}', "
+            f"'{ProjectStatus.IN_PROGRESS.value}', "
+            f"'{ProjectStatus.COMPLETED.value}', "
+            f"'{ProjectStatus.REJECTED.value}')",
             name='ck_project_status'
         ),
         Index('idx_project_status_created', 'status', 'created_at'),
