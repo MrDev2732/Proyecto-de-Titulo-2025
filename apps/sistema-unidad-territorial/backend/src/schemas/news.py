@@ -4,9 +4,15 @@ from uuid import UUID
 from datetime import datetime
 
 class NewsCreate(BaseModel):
-    """Schema para creación de noticia. tenant_id ahora es opcional y puede ser omitido por el cliente."""
+    """
+    Schema para creación de noticia.
+
+    Requiere que el usuario tenga membresía APPROVED en la comunidad especificada.
+    El tenant_id se asigna automáticamente del usuario autenticado.
+    """
     title: str
     body: str
+    community_id: UUID
     visible_from: datetime
     visible_until: Optional[datetime] = None
     
@@ -28,6 +34,7 @@ class NewsUpdate(BaseModel):
     """Schema para edición de noticia (campos opcionales)."""
     title: Optional[str] = None
     body: Optional[str] = None
+    community_id: Optional[UUID] = None
     visible_from: Optional[datetime] = None
     visible_until: Optional[datetime] = None
   
@@ -50,6 +57,7 @@ class NewsResponse(BaseModel):
     id: str
     title: str
     body: str
+    community_id: str
     visible_from: datetime
     visible_until: Optional[datetime]
     created_at: datetime
