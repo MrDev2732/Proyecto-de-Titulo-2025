@@ -228,15 +228,15 @@ class PasswordResetRepository:
     async def find_expired_tokens(self, older_than_hours: int = 24) -> List[PasswordResetToken]:
         """
         Buscar tokens de reset expirados.
-        
+
         Args:
             older_than_hours: Buscar tokens más antiguos que estas horas
-            
+
         Returns:
             Lista de tokens expirados
         """
         cutoff_time = now_chile() - timedelta(hours=older_than_hours)
-        
+
         result = await self.db.execute(
             select(PasswordResetToken).where(
                 or_(
@@ -245,13 +245,13 @@ class PasswordResetRepository:
                 )
             )
         )
-        
+
         return result.scalars().all()
 
     async def delete_token(self, token: PasswordResetToken) -> None:
         """
         Eliminar token de la base de datos.
-        
+
         Args:
             token: Token a eliminar
         """
