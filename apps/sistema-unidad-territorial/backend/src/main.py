@@ -19,6 +19,8 @@ from src.api.email import router as email_router
 from src.api.news import router as news_router
 from src.api.user_communities import router as user_communities_router
 from src.api.projects import router as projects_router
+from src.api.spaces import router as spaces_router
+from src.api.reservations import router as reservations_router
 from src.core.middleware import SessionTrackingMiddleware, AuthLoggingMiddleware
 from src.services.auth import AuthInitializer
 from src.services.news_initializer import NewsInitializer
@@ -159,6 +161,8 @@ app.include_router(email_router, prefix=settings.api.v1_str)
 app.include_router(news_router, prefix=settings.api.v1_str)
 app.include_router(user_communities_router, prefix=settings.api.v1_str)
 app.include_router(projects_router, prefix=settings.api.v1_str)
+app.include_router(spaces_router, prefix=settings.api.v1_str)
+app.include_router(reservations_router, prefix=settings.api.v1_str)
 
 
 # Endpoint de salud

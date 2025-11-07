@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from src.database.models.projects import Project, ProjectAttachment
 from src.database.models.role_assignment import RoleAssignment
 from src.database.models.auth import Role
+from src.database.utils import now_chile
 from src.core.logging import get_logger
 
 
@@ -171,7 +172,6 @@ class ProjectRepository:
         Returns:
             Project: Proyecto deshabilitado o None si no se encontró
         """
-        from src.database.utils import now_chile
         project = await self.get(project_id)
         if project:
             project.deleted_at = now_chile()

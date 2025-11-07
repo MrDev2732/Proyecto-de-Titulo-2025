@@ -5,19 +5,21 @@ from src.database.repositories.auth import (
     OAuthRepository,
 )
 from src.database.repositories.auth_log import AuthenticationLogRepository
-from src.database.repositories.role import RoleRepository
 from src.database.repositories.community import (
     CommunityRepository,
 )
-from src.database.repositories.resident import (
-    AddressEvidenceRepository, ResidentMembershipRepository
-)
 from src.database.repositories.login_gating import LoginGatingRepository
-from src.database.repositories.tenant import TenantRepository
-from src.database.repositories.session import SessionRepository
-from src.database.repositories.registration import RegistrationRequestRepository
 from src.database.repositories.projects import ProjectRepository
-from src.database.repositories.spaces import SpaceRepository, ReservationRepository
+from src.database.repositories.registration import RegistrationRequestRepository
+from src.database.repositories.reservation import ReservationRepository
+from src.database.repositories.resident import (
+    AddressEvidenceRepository, 
+    ResidentMembershipRepository,
+)
+from src.database.repositories.role import RoleRepository
+from src.database.repositories.session import SessionRepository
+from src.database.repositories.spaces import SpaceRepository
+from src.database.repositories.tenant import TenantRepository
 
 
 __all__ = [
@@ -32,5 +34,7 @@ __all__ = [
     "AddressEvidenceRepository",
     "LoginGatingRepository",
     "TenantRepository",
-    "ProjectRepository"
+    "ProjectRepository",
+    "SpaceRepository",
+    "ReservationRepository"
 ]

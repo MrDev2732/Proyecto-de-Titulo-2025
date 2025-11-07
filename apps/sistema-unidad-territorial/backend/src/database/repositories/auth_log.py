@@ -6,10 +6,10 @@ el logging de eventos de autenticación, análisis de seguridad y detección de 
 """
 
 from datetime import timedelta
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from uuid import UUID
 
-from sqlalchemy import select, func, and_, or_, desc, update
+from sqlalchemy import select, func, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import (
