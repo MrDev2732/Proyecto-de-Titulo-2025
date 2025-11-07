@@ -23,14 +23,6 @@ from src.database.models.spaces import Space, Reservation
 from src.database.models.projects import Project, ProjectAttachment
 from src.database.models.news import News
 from src.database.models.system import Tenant, Outbox, NotificationLog, AuditLog, PasswordResetToken
-from src.database.models.catalogs import (
-    StatusReservation,
-    StatusCertificate, 
-    StatusProject,
-    StatusMembership,
-    StatusRegistration,
-    TenantFolioSeq,
-)
 from src.database.models.role_assignment import RoleAssignment
 from src.database.models.community import (
     Community,
@@ -89,14 +81,6 @@ __all__ = [
     "ResidentMembership",
     "RegistrationRequest",
     "RegistrationRequestAttachment",
-
-    # Catalogs
-    "StatusReservation",
-    "StatusCertificate", 
-    "StatusProject",
-    "StatusMembership",
-    "StatusRegistration",
-    "TenantFolioSeq",
 
     # Role Assignment
     "RoleAssignment",
