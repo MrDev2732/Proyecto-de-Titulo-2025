@@ -131,9 +131,9 @@ class Reservation(SoftDeleteBaseModel):
     __table_args__ = (
         CheckConstraint('end_time > start_time', name='ck_reservation_end_after_start'),
         CheckConstraint(
-            f"status IN ('{ReservationStatus.PENDING}', "
-            f"'{ReservationStatus.CONFIRMED}', "
-            f"'{ReservationStatus.CANCELLED}')",
+            f"status IN ('{ReservationStatus.PENDING.value}', "
+            f"'{ReservationStatus.CONFIRMED.value}', "
+            f"'{ReservationStatus.CANCELLED.value}')",
             name='ck_reservation_status'
         ),
         # Indexes for optimizing queries
