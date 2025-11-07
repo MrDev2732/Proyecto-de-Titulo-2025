@@ -16,6 +16,8 @@ from src.database.repositories.login_gating import LoginGatingRepository
 from src.database.repositories.tenant import TenantRepository
 from src.database.repositories.session import SessionRepository
 from src.database.repositories.registration import RegistrationRequestRepository
+from src.database.repositories.projects import ProjectRepository
+from src.database.repositories.spaces import SpaceRepository, ReservationRepository
 
 
 __all__ = [
@@ -29,5 +31,6 @@ __all__ = [
     "RegistrationRequestRepository",
     "AddressEvidenceRepository",
     "LoginGatingRepository",
-    "TenantRepository"
+    "TenantRepository",
+    "ProjectRepository"
 ]
