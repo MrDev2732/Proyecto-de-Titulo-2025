@@ -3,6 +3,7 @@
 from src.schemas.auth import *
 from src.schemas.community import *
 from src.schemas.projects import *
+from src.schemas.spaces import *
 
 
 __all__ = [
@@ -37,4 +38,17 @@ __all__ = [
     "ProjectListResponse",
     "ProjectApprovalRequest",
     "ProjectAttachmentResponse",
+    # Space and Reservation schemas
+    "SpaceCreate",
+    "SpaceUpdate",
+    "SpaceResponse",
+    "SpaceListResponse",
+    "ReservationCreate",
+    "ReservationUpdate",
+    "ReservationResponse",
+    "ReservationListResponse",
+    "ReservationApprovalRequest",
+    "AvailabilityCheckRequest",
+    "AvailabilityCheckResponse",
+    "ReservationCalendarResponse"
 ]
