@@ -2,6 +2,7 @@
 
 from src.schemas.auth import *
 from src.schemas.community import *
+from src.schemas.projects import *
 
 
 __all__ = [
@@ -27,6 +28,13 @@ __all__ = [
     "PasswordResetConfirmationResponse",
     "PasswordResetTokenInfo",
     # Community schemas
-    "RegistrationRequestResponse"
-    "CertificateRequest"
+    "RegistrationRequestResponse",
+    "CertificateRequest",
+    # Project schemas
+    "ProjectCreate",
+    "ProjectUpdate",
+    "ProjectResponse",
+    "ProjectListResponse",
+    "ProjectApprovalRequest",
+    "ProjectAttachmentResponse",
 ]
