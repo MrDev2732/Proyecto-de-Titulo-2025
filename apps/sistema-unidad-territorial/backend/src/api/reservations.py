@@ -27,7 +27,7 @@ from src.schemas.spaces import (
     ReservationCalendarResponse
 )
 from src.core.logging import get_logger
-from src.core.dependencies import get_current_active_user
+from src.core.dependencies import get_current_active_user, require_admin_permissions
 from src.database.repositories import SpaceRepository, ReservationRepository
 
 
@@ -51,13 +51,20 @@ async def get_user_community_id(user_id: UUID, session: AsyncSession) -> Optiona
         .where(
             and_(
                 ResidentMembership.user_id == user_id,
-                ResidentMembership.status == MembershipStatus.APPROVED
+                ResidentMembership.status == MembershipStatus.APPROVED,
+                ResidentMembership.deleted_at.is_(None)
             )
         )
         .limit(1)
     )
     membership = result.scalar_one_or_none()
-    return membership.community_id if membership else None
+
+    if membership:
+        logger.debug(f"✅ Found membership for user {user_id}: community_id={membership.community_id}")
+        return membership.community_id
+    else:
+        logger.warning(f"⚠️ No approved membership found for user {user_id}")
+        return None
 
 
 # ==================== Reservation Endpoints ====================
@@ -139,11 +146,16 @@ async def create_reservation(
     - CONFIRMED: Aprobación automática (si el espacio lo permite)
     """
     try:
+        logger.info(f"🎫 Creating reservation for user {current_user.id} ({current_user.email})")
+        logger.info(f"📍 Space ID: {reservation_data.space_id}")
+        logger.info(f"⏰ Time: {reservation_data.start_time} to {reservation_data.end_time}")
+
         space_repo = SpaceRepository(session)
         reservation_repo = ReservationRepository(session)
 
         # Obtener community_id del usuario
         user_community_id = await get_user_community_id(current_user.id, session)
+        logger.info(f"🏘️ User community_id: {user_community_id}")
         if not user_community_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -291,13 +303,12 @@ async def get_my_reservations(
 
 
 @router.get(
-    "/community/{community_id}",
+    "/community",
     response_model=ReservationListResponse,
     summary="Listar reservas de comunidad",
-    description="Lista todas las reservas de una comunidad con paginación"
+    description="Lista todas las reservas de la comunidad del usuario actual con paginación"
 )
 async def list_community_reservations(
-    community_id: UUID = Path(..., description="ID de la comunidad"),
     page: int = Query(1, ge=1, description="Número de página"),
     per_page: int = Query(20, ge=1, le=100, description="Elementos por página"),
     status_filter: Optional[str] = Query(None, description="Filtrar por estado"),
@@ -306,7 +317,11 @@ async def list_community_reservations(
     session: AsyncSession = Depends(get_db_session)
 ) -> ReservationListResponse:
     """
-    Listar reservas de una comunidad.
+    Listar reservas de la comunidad del usuario actual.
+
+    **Comportamiento:**
+    - Obtiene automáticamente el community_id de la membresía del usuario
+    - Solo muestra reservas de la comunidad a la que pertenece el usuario
 
     **Filtros disponibles:**
     - Estado (PENDING, CONFIRMED, CANCELLED)
@@ -314,15 +329,30 @@ async def list_community_reservations(
     - Paginación
     """
     try:
+        logger.info(f"🔍 Listing community reservations for user {current_user.email}")
+
+        # Obtener community_id del usuario autenticado
+        user_community_id = await get_user_community_id(current_user.id, session)
+        logger.info(f"📍 User community_id: {user_community_id}")
+
+        if not user_community_id:
+            logger.warning(f"⚠️ User {current_user.email} has no approved community membership")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debe pertenecer a una comunidad para ver sus reservas"
+            )
+
         reservation_repo = ReservationRepository(session)
 
         reservations, total, total_pages = await reservation_repo.list_by_community_paginated(
-            community_id=community_id,
+            community_id=user_community_id,
             page=page,
             per_page=per_page,
             status_filter=status_filter,
             space_id_filter=space_id
         )
+
+        logger.info(f"📊 Found {total} total reservations, {len(reservations)} on current page, {total_pages} total pages")
 
         # Enriquecer con información adicional
         responses = []
@@ -332,6 +362,8 @@ async def list_community_reservations(
             response.user_email = reservation.requesting_user.email if reservation.requesting_user else None
             responses.append(response)
 
+        logger.info(f"✅ Successfully enriched {len(responses)} reservations")
+
         return ReservationListResponse(
             reservations=responses,
             total=total,
@@ -340,6 +372,8 @@ async def list_community_reservations(
             total_pages=total_pages
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error listing community reservations: {str(e)}")
         raise HTTPException(
@@ -421,7 +455,7 @@ async def get_space_calendar(
 async def approve_reservation(
     reservation_id: UUID = Path(..., description="ID de la reserva"),
     approval_data: ReservationApprovalRequest = ...,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_permissions),
     session: AsyncSession = Depends(get_db_session)
 ) -> ReservationResponse:
     """
