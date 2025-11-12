@@ -13,7 +13,6 @@ from sqlalchemy import (
     UniqueConstraint,
     CheckConstraint,
     Index,
-    SmallInteger,
     LargeBinary,
 )
 from sqlalchemy.dialects.postgresql import CITEXT, UUID
@@ -103,29 +102,42 @@ class User(SoftDeleteBaseModel):
     role_assignments: Mapped[List["RoleAssignment"]] = relationship(
         "RoleAssignment",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="noload"
     )
     oauth_identities: Mapped[List["UserOauthIdentity"]] = relationship(
         "UserOauthIdentity",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="noload"
     )
     sessions: Mapped[List["UserSession"]] = relationship(
         "UserSession",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="noload"
     )
     # Email relationships
     primary_email: Mapped[Optional["UserEmail"]] = relationship(
         "UserEmail",
         foreign_keys=[primary_email_id],
-        post_update=True  # Avoid circular dependency
+        post_update=True,
+        lazy="noload"
     )
     emails: Mapped[List["UserEmail"]] = relationship(
         "UserEmail",
         foreign_keys="UserEmail.user_id",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="noload"
+    )
+    # Community memberships
+    memberships: Mapped[List["ResidentMembership"]] = relationship(
+        "ResidentMembership",
+        foreign_keys="ResidentMembership.user_id",
+        back_populates="user",
+        viewonly=True,
+        lazy="noload"
     )
 
     @property
@@ -141,14 +153,28 @@ class User(SoftDeleteBaseModel):
     @property
     def tenant_id(self) -> Optional[PyUUID]:
         """
-        Get tenant ID from the first active role assignment.
+        Get tenant ID from community memberships.
+        Obtiene el tenant_id desde: User -> ResidentMembership -> Community -> Tenant
+
+        Retorna el tenant_id de la primera membresía activa/aprobada.
         Útil para logging y operaciones multi-tenant.
         """
+        if hasattr(self, 'memberships') and self.memberships:
+            from src.database.enums import MembershipStatus
+            for membership in self.memberships:
+                # Buscar membresía activa/aprobada con comunidad cargada
+                if (membership.status == MembershipStatus.APPROVED and 
+                    hasattr(membership, 'community') and 
+                    membership.community and
+                    not membership.is_deleted):
+                    return membership.community.tenant_id
+
+        # Fallback: intentar desde role_assignments
         if self.role_assignments:
             for assignment in self.role_assignments:
-                # Filtrar role_assignments soft-deleted
                 if assignment.tenant_id and not assignment.is_deleted:
                     return assignment.tenant_id
+
         return None
 
     def get_verified_emails(self) -> List["UserEmail"]:
@@ -298,7 +324,8 @@ class UserEmail(BaseModel):
     user: Mapped[User] = relationship(
         "User", 
         foreign_keys=[user_id],
-        back_populates="emails"
+        back_populates="emails",
+        lazy="noload"
     )
 
     @property
@@ -433,7 +460,7 @@ class UserOauthIdentity(TenantBaseModel):
     )
 
     # Relationships
-    user: Mapped[User] = relationship("User", back_populates="oauth_identities")
+    user: Mapped[User] = relationship("User", back_populates="oauth_identities", lazy="noload")
 
     @property
     def access_token(self) -> Optional[str]:
@@ -527,7 +554,7 @@ class UserSession(TenantBaseModel):
     )
 
     # Relationships
-    user: Mapped[User] = relationship("User", back_populates="sessions")
+    user: Mapped[User] = relationship("User", back_populates="sessions", lazy="noload")
 
     def is_expired(self) -> bool:
         """Check if the session has expired."""
@@ -647,12 +674,14 @@ class AuthenticationLog(TenantBaseModel):
     user: Mapped[Optional["User"]] = relationship(
         "User", 
         foreign_keys=[user_id],
-        back_populates=None  # No necesitamos relación bidireccional
+        back_populates=None,
+        lazy="noload"
     )
     user_session: Mapped[Optional["UserSession"]] = relationship(
         "UserSession",
         foreign_keys=[user_session_id], 
-        back_populates=None  # No necesitamos relación bidireccional
+        back_populates=None,
+        lazy="noload"
     )
 
     def __repr__(self) -> str:
