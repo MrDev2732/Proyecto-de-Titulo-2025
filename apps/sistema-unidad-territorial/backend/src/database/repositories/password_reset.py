@@ -84,33 +84,22 @@ class PasswordResetRepository:
         Args:
             user_id: ID del usuario
         """
-        # Marcar como usados todos los tokens activos del usuario
-        await self.db.execute(
-            select(PasswordResetToken)
-            .where(
-                and_(
-                    PasswordResetToken.user_id == user_id,
-                    PasswordResetToken.is_used == False,
-                    PasswordResetToken.expires_at > now_chile()
-                )
-            )
-        )
-
-        # Actualizar tokens existentes
+        # Obtener todos los tokens activos del usuario (no consumidos y no expirados)
         result = await self.db.execute(
             select(PasswordResetToken).where(
                 and_(
                     PasswordResetToken.user_id == user_id,
-                    PasswordResetToken.is_used == False,
+                    PasswordResetToken.consumed_at.is_(None),
                     PasswordResetToken.expires_at > now_chile()
                 )
             )
         )
 
         existing_tokens = result.scalars().all()
+
+        # Marcar cada token como consumido
         for token in existing_tokens:
-            token.is_used = True
-            token.used_at = now_chile()
+            token.mark_as_consumed()
 
         logger.info(f"🗑️ Invalidated {len(existing_tokens)} existing reset tokens for user {user_id}")
 
@@ -194,7 +183,7 @@ class PasswordResetRepository:
                         PasswordResetToken.code == code,
                         User.primary_email_id == user_email.id,
                         User.deleted_at.is_(None),
-                        PasswordResetToken.is_used == False,
+                        PasswordResetToken.consumed_at.is_(None),
                         PasswordResetToken.expires_at > now_chile()
                     )
                 )
@@ -212,8 +201,7 @@ class PasswordResetRepository:
         Args:
             token: Token a actualizar
         """
-        token.is_used = True
-        token.used_at = now_chile()
+        token.mark_as_consumed()
 
     async def update_user_password_hash(self, user: User, password_hash: str) -> None:
         """
