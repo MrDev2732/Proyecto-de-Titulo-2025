@@ -1,0 +1,72 @@
+<div class="spaces-container">
+  <div class="header">
+    <h1>Espacios Disponibles</h1>
+    <p class="subtitle">Reserva canchas, salas y plazas de tu comunidad</p>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Cargando espacios...</p>
+    </div>
+  }
+
+  @if (error()) {
+    <div class="error-message">
+      <p>❌ {{ error() }}</p>
+      <button (click)="loadSpaces()" class="retry-btn">Reintentar</button>
+    </div>
+  }
+
+  @if (!loading() && !error() && spaces().length === 0) {
+    <div class="empty-state">
+      <p>📭 No hay espacios disponibles en tu comunidad</p>
+    </div>
+  }
+
+  @if (!loading() && !error() && spaces().length > 0) {
+    <div class="spaces-grid">
+      @for (space of spaces(); track space.id) {
+        <div class="space-card" (click)="viewSpaceDetails(space.id)">
+          <div class="space-header">
+            <h3>{{ space.name }}</h3>
+            @if (space.requires_approval) {
+              <span class="badge approval-required">Requiere aprobación</span>
+            } @else {
+              <span class="badge auto-confirm">Confirmación automática</span>
+            }
+          </div>
+
+          @if (space.description) {
+            <p class="description">{{ space.description }}</p>
+          }
+
+          <div class="space-details">
+            @if (space.capacity) {
+              <div class="detail-item">
+                <span class="icon">👥</span>
+                <span>Capacidad: {{ space.capacity }} personas</span>
+              </div>
+            }
+
+            @if (space.rules_json?.max_hours_daily) {
+              <div class="detail-item">
+                <span class="icon">⏰</span>
+                <span>Máximo {{ space.rules_json?.max_hours_daily }}h por día</span>
+              </div>
+            }
+
+            @if (space.rules_json?.max_hours_weekly) {
+              <div class="detail-item">
+                <span class="icon">📅</span>
+                <span>Máximo {{ space.rules_json?.max_hours_weekly }}h por semana</span>
+              </div>
+            }
+          </div>
+
+          <button class="reserve-btn">Ver disponibilidad</button>
+        </div>
+      }
+    </div>
+  }
+</div>

@@ -5,6 +5,8 @@ import { AuthService } from '../../shared/auth/auth.service';
 import { LoadingStateComponent } from '../../shared/components/loading-state.component';
 import { WelcomeAnimationComponent } from '../../shared/components/welcome-animation.component';
 import { RegistrationRequestsListComponent } from '../../shared/components/registration-requests-list.component';
+import { CommunityReservationsListComponent } from '../reservations/community-reservations-list.component';
+import { SpacesManagementComponent } from '../spaces/spaces-management.component';
 
 interface DashboardStats {
 	pending: number;
@@ -36,7 +38,7 @@ interface QuickAction {
 @Component({
 	selector: 'app-dashboard',
 	standalone: true,
-	imports: [CommonModule, LoadingStateComponent, WelcomeAnimationComponent, RegistrationRequestsListComponent],
+	imports: [CommonModule, LoadingStateComponent, WelcomeAnimationComponent, RegistrationRequestsListComponent, CommunityReservationsListComponent, SpacesManagementComponent],
 	templateUrl: './dashboard.component.html',
 	styleUrl: './dashboard.component.scss'
 })
@@ -57,7 +59,7 @@ export class DashboardComponent implements OnInit {
 	quickActions = signal<QuickAction[]>([]);
 
 	// Vista actual del dashboard
-	currentView = signal<'overview' | 'registration' | 'residents' | 'projects' | 'documents' | 'meetings'>('overview');
+	currentView = signal<'overview' | 'registration' | 'reservations' | 'spaces' | 'residents' | 'projects' | 'documents' | 'meetings'>('overview');
 
 	// Control de animación de bienvenida
 	showWelcomeAnimation = signal(true);
@@ -79,7 +81,20 @@ export class DashboardComponent implements OnInit {
 				title: 'Gestión de Solicitudes',
 				description: 'Administra las solicitudes de registro de nuevos vecinos',
 				icon: 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z',
-				badge: 12, // Número de solicitudes pendientes
+				status: 'active'
+			},
+			{
+				id: 'spaces',
+				title: 'Gestión de Espacios',
+				description: 'Administra los espacios reservables de la comunidad',
+				icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+				status: 'active'
+			},
+			{
+				id: 'reservations',
+				title: 'Gestión de Reservas',
+				description: 'Aprueba y administra las reservas de espacios comunitarios',
+				icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
 				status: 'active'
 			},
 			{
@@ -129,6 +144,22 @@ export class DashboardComponent implements OnInit {
 				description: 'Revisar solicitudes pendientes',
 				icon: 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z',
 				action: () => this.navigateToModule('registration'),
+				color: 'gray'
+			},
+			{
+				id: 'manage-spaces',
+				title: 'Gestionar Espacios',
+				description: 'Crear y configurar espacios',
+				icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+				action: () => this.navigateToModule('spaces'),
+				color: 'gray'
+			},
+			{
+				id: 'manage-reservations',
+				title: 'Gestionar Reservas',
+				description: 'Aprobar reservas pendientes',
+				icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+				action: () => this.navigateToModule('reservations'),
 				color: 'gray'
 			},
 			{
@@ -201,6 +232,10 @@ export class DashboardComponent implements OnInit {
 	navigateToModule(moduleId: string): void {
 		if (moduleId === 'registration') {
 			this.currentView.set('registration');
+		} else if (moduleId === 'reservations') {
+			this.currentView.set('reservations');
+		} else if (moduleId === 'spaces') {
+			this.currentView.set('spaces');
 		} else {
 			this.showComingSoon(`Módulo ${moduleId}`);
 		}

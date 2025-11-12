@@ -59,7 +59,24 @@ export const appRoutes: Route[] = [
 		path: 'resident-dashboard', 
 		canActivate: [authGuard], 
 		component: ResidentDashboardComponent,
-		data: { title: 'Portal del Residente' }
+		data: { title: 'Portal del Residente' },
+		children: [
+			{
+				path: 'spaces',
+				loadComponent: () => import('./features/spaces/spaces-list.component').then(m => m.SpacesListComponent),
+				data: { title: 'Espacios Disponibles' }
+			},
+			{
+				path: 'reservations',
+				loadComponent: () => import('./features/reservations/reservations-list.component').then(m => m.ReservationsListComponent),
+				data: { title: 'Mis Reservas' }
+			},
+			{
+				path: 'reservations/new/:id',
+				loadComponent: () => import('./features/reservations/reservations-create.component').then(m => m.ReservationsCreateComponent),
+				data: { title: 'Nueva Reserva' }
+			}
+		]
 	},
 
 	// Compatibilidad con dashboard genérico

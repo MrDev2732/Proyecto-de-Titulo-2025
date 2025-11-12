@@ -1,0 +1,145 @@
+<div class="reservation-container">
+  <button class="back-btn" (click)="goBack()">← Volver a espacios</button>
+
+  @if (loading()) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Cargando información del espacio...</p>
+    </div>
+  }
+
+  @if (error()) {
+    <div class="error-message">
+      <p>❌ {{ error() }}</p>
+    </div>
+  }
+
+  @if (space() && !loading()) {
+    <div class="space-info">
+      <h1>{{ space()!.name }}</h1>
+      @if (space()!.description) {
+        <p class="description">{{ space()!.description }}</p>
+      }
+
+      <div class="rules-info">
+        <h3>📋 Reglas del espacio</h3>
+        <ul>
+          @if (space()!.capacity) {
+            <li>👥 Capacidad máxima: {{ space()!.capacity }} personas</li>
+          }
+          @if (space()!.rules_json?.max_hours_daily) {
+            <li>⏰ Máximo {{ space()!.rules_json?.max_hours_daily }} horas por día</li>
+          }
+          @if (space()!.rules_json?.max_hours_weekly) {
+            <li>📅 Máximo {{ space()!.rules_json?.max_hours_weekly }} horas por semana</li>
+          }
+          @if (space()!.rules_json?.min_duration_hours) {
+            <li>⏱️ Duración mínima: {{ space()!.rules_json?.min_duration_hours }} hora(s)</li>
+          }
+          @if (space()!.rules_json?.max_duration_hours) {
+            <li>⏱️ Duración máxima: {{ space()!.rules_json?.max_duration_hours }} hora(s)</li>
+          }
+          @if (space()!.requires_approval) {
+            <li>✋ Las reservas requieren aprobación del administrador</li>
+          } @else {
+            <li>✅ Confirmación automática</li>
+          }
+        </ul>
+      </div>
+    </div>
+
+    <div class="reservation-form">
+      <h2>Nueva Reserva</h2>
+
+      <div class="form-group">
+        <label for="date">Fecha</label>
+        <input 
+          type="date" 
+          id="date" 
+          [(ngModel)]="selectedDate"
+          [min]="minDate"
+          (change)="onDateChange()"
+          required
+        />
+      </div>
+
+      <div class="time-row">
+        <div class="form-group">
+          <label for="start-time">Hora inicio</label>
+          <input 
+            type="time" 
+            id="start-time" 
+            [(ngModel)]="startTime"
+            (change)="checkAvailability()"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="end-time">Hora fin</label>
+          <input 
+            type="time" 
+            id="end-time" 
+            [(ngModel)]="endTime"
+            (change)="checkAvailability()"
+            required
+          />
+        </div>
+      </div>
+
+      @if (availabilityChecked()) {
+        @if (isAvailable()) {
+          <div class="availability-message success">
+            ✅ {{ availabilityMessage() }}
+          </div>
+        } @else {
+          <div class="availability-message error">
+            ❌ {{ availabilityMessage() }}
+          </div>
+        }
+      }
+
+      @if (checkingAvailability()) {
+        <div class="checking">Verificando disponibilidad...</div>
+      }
+
+      <button 
+        class="submit-btn"
+        (click)="createReservation()"
+        [disabled]="!canSubmit()"
+      >
+        {{ space()!.requires_approval ? 'Solicitar Reserva' : 'Confirmar Reserva' }}
+      </button>
+    </div>
+
+    @if (upcomingReservations().length > 0) {
+      <div class="upcoming-reservations">
+        <h3>📅 Próximas reservas de este espacio</h3>
+        <div class="reservations-list">
+          @for (reservation of upcomingReservations(); track reservation.id) {
+            <div class="reservation-item">
+              <div class="time-block">
+                <span class="date">{{ formatDate(reservation.start_time) }}</span>
+                <span class="time">{{ formatTime(reservation.start_time) }} - {{ formatTime(reservation.end_time) }}</span>
+              </div>
+              <span class="status-badge" [class]="reservation.status.toLowerCase()">
+                {{ getStatusLabel(reservation.status) }}
+              </span>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  }
+
+  @if (successMessage()) {
+    <div class="success-modal" (click)="closeSuccessModal()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <h2>✅ Reserva creada</h2>
+        <p>{{ successMessage() }}</p>
+        <button (click)="goToMyReservations()">Ver mis reservas</button>
+        <button (click)="closeSuccessModal()" class="secondary">Hacer otra reserva</button>
+      </div>
+    </div>
+  }
+</div>

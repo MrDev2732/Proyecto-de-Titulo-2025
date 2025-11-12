@@ -1,0 +1,258 @@
+<div class="community-reservations-container">
+  <!-- Header con estadísticas -->
+  <div class="header">
+    <div class="title-section">
+      <h1>Gestión de Reservas</h1>
+      <p class="subtitle">Administra todas las reservas de la comunidad</p>
+    </div>
+
+    <div class="stats-cards">
+      <div class="stat-card pending">
+        <span class="stat-icon">⏳</span>
+        <div class="stat-content">
+          <span class="stat-number">{{ pendingCount() }}</span>
+          <span class="stat-label">Pendientes</span>
+        </div>
+      </div>
+      <div class="stat-card confirmed">
+        <span class="stat-icon">✅</span>
+        <div class="stat-content">
+          <span class="stat-number">{{ confirmedCount() }}</span>
+          <span class="stat-label">Confirmadas</span>
+        </div>
+      </div>
+      <div class="stat-card cancelled">
+        <span class="stat-icon">❌</span>
+        <div class="stat-content">
+          <span class="stat-number">{{ cancelledCount() }}</span>
+          <span class="stat-label">Canceladas</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mensajes de éxito/error -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      {{ successMessage() }}
+    </div>
+  }
+
+  @if (error() && !loading()) {
+    <div class="alert alert-error">
+      <p>{{ error() }}</p>
+      <button (click)="loadReservations()" class="retry-btn">Reintentar</button>
+    </div>
+  }
+
+  <!-- Filtros -->
+  <div class="filters-section">
+    <div class="filter-group">
+      <label for="status-filter">Estado:</label>
+      <select id="status-filter" [(ngModel)]="statusFilter" (change)="onFilterChange()">
+        <option value="">Todos los estados</option>
+        <option value="PENDING">⏳ Pendientes</option>
+        <option value="CONFIRMED">✅ Confirmadas</option>
+        <option value="CANCELLED">❌ Canceladas</option>
+      </select>
+    </div>
+
+    <div class="filter-actions">
+      <button class="refresh-btn" (click)="loadReservations()" [disabled]="loading()">
+        🔄 Actualizar
+      </button>
+    </div>
+  </div>
+
+  <!-- Estado de carga -->
+  @if (loading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Cargando reservas...</p>
+    </div>
+  }
+
+  <!-- Estado vacío -->
+  @if (!loading() && !error() && reservations().length === 0) {
+    <div class="empty-state">
+      <div class="empty-icon">📭</div>
+      <h3>No hay reservas</h3>
+      <p>No se encontraron reservas {{ statusFilter ? 'con este estado' : 'en la comunidad' }}</p>
+    </div>
+  }
+
+  <!-- Lista de reservas -->
+  @if (!loading() && reservations().length > 0) {
+    <div class="reservations-grid">
+      @for (reservation of reservations(); track reservation.id) {
+        <div class="reservation-card" 
+             [class.pending]="reservation.status === 'PENDING'"
+             [class.confirmed]="reservation.status === 'CONFIRMED'"
+             [class.cancelled]="reservation.status === 'CANCELLED'"
+             [class.past]="isPast(reservation.end_time)">
+
+          <!-- Encabezado de la tarjeta -->
+          <div class="card-header">
+            <div class="space-info">
+              <h3>{{ reservation.space_name || 'Espacio' }}</h3>
+              <span class="status-badge" [class]="reservation.status.toLowerCase()">
+                {{ getStatusIcon(reservation.status) }} {{ getStatusLabel(reservation.status) }}
+              </span>
+            </div>
+            @if (isPast(reservation.end_time)) {
+              <span class="past-badge">Finalizada</span>
+            }
+          </div>
+
+          <!-- Cuerpo de la tarjeta -->
+          <div class="card-body">
+            <!-- Información del usuario -->
+            <div class="user-info">
+              <span class="icon">👤</span>
+              <span class="user-email">{{ reservation.user_email || 'Usuario' }}</span>
+            </div>
+
+            <!-- Información de fecha y hora -->
+            <div class="time-info">
+              <div class="info-row">
+                <span class="icon">📅</span>
+                <span>{{ formatDate(reservation.start_time) }}</span>
+              </div>
+              <div class="info-row">
+                <span class="icon">⏰</span>
+                <span>{{ formatTime(reservation.start_time) }} - {{ formatTime(reservation.end_time) }}</span>
+              </div>
+              <div class="info-row">
+                <span class="icon">⏱️</span>
+                <span>Duración: {{ getDuration(reservation.start_time, reservation.end_time) }}</span>
+              </div>
+            </div>
+
+            <!-- Motivo de cancelación -->
+            @if (reservation.cancel_reason) {
+              <div class="cancel-reason">
+                <strong>Motivo:</strong> {{ reservation.cancel_reason }}
+              </div>
+            }
+
+            <!-- Acciones de gestión -->
+            @if (canManageReservation(reservation)) {
+              <div class="management-actions">
+                <button 
+                  class="approve-btn"
+                  (click)="approveReservation(reservation)"
+                  [disabled]="processing()"
+                >
+                  ✅ Aprobar
+                </button>
+                <button 
+                  class="reject-btn"
+                  (click)="showApprovalModal(reservation)"
+                  [disabled]="processing()"
+                >
+                  ❌ Rechazar
+                </button>
+              </div>
+            }
+          </div>
+
+          <!-- Pie de la tarjeta -->
+          <div class="card-footer">
+            <span class="created-date">
+              <span class="icon">📝</span>
+              Creada: {{ formatDateTime(reservation.created_at) }}
+            </span>
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Paginación -->
+    @if (total() > perPage) {
+      <div class="pagination">
+        <button 
+          class="page-btn"
+          (click)="previousPage()" 
+          [disabled]="currentPage === 1 || loading()"
+        >
+          ← Anterior
+        </button>
+        <span class="page-info">
+          Página <strong>{{ currentPage }}</strong> de <strong>{{ totalPages() }}</strong>
+          <span class="total-items">({{ total() }} reservas)</span>
+        </span>
+        <button 
+          class="page-btn"
+          (click)="nextPage()" 
+          [disabled]="currentPage >= totalPages() || loading()"
+        >
+          Siguiente →
+        </button>
+      </div>
+    }
+  }
+
+  <!-- Modal de rechazo -->
+  @if (approvalModalReservation()) {
+    <div class="modal-overlay" (click)="closeApprovalModal()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2>Rechazar Reserva</h2>
+          <button class="close-modal-btn" (click)="closeApprovalModal()">×</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="reservation-summary">
+            <h4>{{ approvalModalReservation()!.space_name }}</h4>
+            <div class="summary-details">
+              <div class="detail-row">
+                <span class="icon">👤</span>
+                <span>{{ approvalModalReservation()!.user_email }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="icon">📅</span>
+                <span>{{ formatDate(approvalModalReservation()!.start_time) }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="icon">⏰</span>
+                <span>
+                  {{ formatTime(approvalModalReservation()!.start_time) }} - 
+                  {{ formatTime(approvalModalReservation()!.end_time) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="reject-reason">Motivo del rechazo *</label>
+            <textarea 
+              id="reject-reason"
+              [(ngModel)]="rejectReason"
+              rows="4"
+              placeholder="Explica el motivo del rechazo (mínimo 10 caracteres)..."
+              [class.error]="error() && error()!.includes('motivo')"
+            ></textarea>
+            <small class="hint">Este motivo será visible para el usuario que solicitó la reserva.</small>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button 
+            class="btn-reject-confirm" 
+            (click)="confirmReject()" 
+            [disabled]="processing() || !rejectReason || rejectReason.trim().length < 10"
+          >
+            {{ processing() ? 'Procesando...' : 'Confirmar rechazo' }}
+          </button>
+          <button 
+            class="btn-cancel" 
+            (click)="closeApprovalModal()" 
+            [disabled]="processing()"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

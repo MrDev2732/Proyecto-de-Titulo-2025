@@ -1,0 +1,319 @@
+<div class="spaces-management-container">
+  <!-- Header -->
+  <div class="header">
+    <div class="title-section">
+      <h1>Gestión de Espacios</h1>
+      <p class="subtitle">Administra los espacios reservables de tu comunidad</p>
+    </div>
+
+    <button class="btn-create" (click)="openCreateModal()">
+      <span class="icon">➕</span>
+      Crear Espacio
+    </button>
+  </div>
+
+  <!-- Mensajes de éxito/error -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      {{ successMessage() }}
+    </div>
+  }
+
+  @if (error() && !loading()) {
+    <div class="alert alert-error">
+      <p>{{ error() }}</p>
+      <button (click)="loadSpaces()" class="retry-btn">Reintentar</button>
+    </div>
+  }
+
+  <!-- Estado de carga -->
+  @if (loading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Cargando espacios...</p>
+    </div>
+  }
+
+  <!-- Estado vacío -->
+  @if (!loading() && !error() && spaces().length === 0) {
+    <div class="empty-state">
+      <div class="empty-icon">🏢</div>
+      <h3>No hay espacios creados</h3>
+      <p>Crea el primer espacio para que los residentes puedan hacer reservas</p>
+      <button class="btn-primary" (click)="openCreateModal()">Crear Primer Espacio</button>
+    </div>
+  }
+
+  <!-- Lista de espacios -->
+  @if (!loading() && spaces().length > 0) {
+    <div class="spaces-grid">
+      @for (space of spaces(); track space.id) {
+        <div class="space-card">
+          <!-- Header de la tarjeta -->
+          <div class="card-header">
+            <div class="space-info">
+              <h3>{{ space.name }}</h3>
+              @if (space.requires_approval) {
+                <span class="badge approval-required">Requiere aprobación</span>
+              } @else {
+                <span class="badge auto-confirm">Auto-confirmación</span>
+              }
+            </div>
+          </div>
+
+          <!-- Cuerpo de la tarjeta -->
+          <div class="card-body">
+            @if (space.description) {
+              <p class="description">{{ space.description }}</p>
+            }
+
+            <div class="details-grid">
+              @if (space.capacity) {
+                <div class="detail-item">
+                  <span class="icon">👥</span>
+                  <span>Capacidad: <strong>{{ space.capacity }}</strong> personas</span>
+                </div>
+              }
+
+              @if (space.rules_json?.max_hours_daily) {
+                <div class="detail-item">
+                  <span class="icon">⏰</span>
+                  <span>Máximo <strong>{{ space.rules_json?.max_hours_daily }}h</strong> por día</span>
+                </div>
+              }
+
+              @if (space.rules_json?.max_hours_weekly) {
+                <div class="detail-item">
+                  <span class="icon">📅</span>
+                  <span>Máximo <strong>{{ space.rules_json?.max_hours_weekly }}h</strong> por semana</span>
+                </div>
+              }
+
+              @if (space.rules_json?.min_duration_hours) {
+                <div class="detail-item">
+                  <span class="icon">🕐</span>
+                  <span>Duración mínima: <strong>{{ space.rules_json?.min_duration_hours }}h</strong></span>
+                </div>
+              }
+
+              @if (space.rules_json?.max_duration_hours) {
+                <div class="detail-item">
+                  <span class="icon">🕑</span>
+                  <span>Duración máxima: <strong>{{ space.rules_json?.max_duration_hours }}h</strong></span>
+                </div>
+              }
+
+              @if (space.rules_json?.advance_days_required) {
+                <div class="detail-item">
+                  <span class="icon">📆</span>
+                  <span>Reservar con <strong>{{ space.rules_json?.advance_days_required }}</strong> días de anticipación</span>
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- Footer de la tarjeta con acciones -->
+          <div class="card-footer">
+            <span class="created-date">
+              Creado: {{ formatDate(space.created_at) }}
+            </span>
+            <div class="actions">
+              <button class="btn-edit" (click)="openEditModal(space)" title="Editar">
+                ✏️
+              </button>
+              <button class="btn-delete" (click)="openDeleteModal(space)" title="Eliminar">
+                🗑️
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Modal de Crear/Editar -->
+  @if (showCreateModal() || showEditModal()) {
+    <div class="modal-overlay" (click)="closeModals()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2>{{ showCreateModal() ? 'Crear Nuevo Espacio' : 'Editar Espacio' }}</h2>
+          <button class="close-modal-btn" (click)="closeModals()">×</button>
+        </div>
+
+        <div class="modal-body">
+          <form>
+            <!-- Información básica -->
+            <div class="section-title">Información Básica</div>
+
+            <div class="form-group">
+              <label for="name">Nombre del Espacio *</label>
+              <input
+                type="text"
+                id="name"
+                [(ngModel)]="spaceForm.name"
+                name="name"
+                placeholder="Ej: Cancha de Fútbol"
+                required
+                [class.error]="error() && spaceForm.name.length < 3"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="description">Descripción</label>
+              <textarea
+                id="description"
+                [(ngModel)]="spaceForm.description"
+                name="description"
+                rows="3"
+                placeholder="Descripción del espacio..."
+              ></textarea>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="capacity">Capacidad (personas)</label>
+                <input
+                  type="number"
+                  id="capacity"
+                  [(ngModel)]="spaceForm.capacity"
+                  name="capacity"
+                  min="1"
+                  placeholder="0"
+                />
+              </div>
+
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input
+                    type="checkbox"
+                    [(ngModel)]="spaceForm.requires_approval"
+                    name="requires_approval"
+                  />
+                  <span>Requiere aprobación del administrador</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Reglas de Uso -->
+            <div class="section-title">Reglas de Uso (Opcional)</div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="max_hours_daily">Máximo horas por día</label>
+                <input
+                  type="number"
+                  id="max_hours_daily"
+                  [(ngModel)]="spaceForm.rules_json.max_hours_daily"
+                  name="max_hours_daily"
+                  min="0"
+                  step="0.5"
+                  placeholder="0"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="max_hours_weekly">Máximo horas por semana</label>
+                <input
+                  type="number"
+                  id="max_hours_weekly"
+                  [(ngModel)]="spaceForm.rules_json.max_hours_weekly"
+                  name="max_hours_weekly"
+                  min="0"
+                  step="0.5"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="min_duration_hours">Duración mínima (horas)</label>
+                <input
+                  type="number"
+                  id="min_duration_hours"
+                  [(ngModel)]="spaceForm.rules_json.min_duration_hours"
+                  name="min_duration_hours"
+                  min="0"
+                  step="0.5"
+                  placeholder="0"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="max_duration_hours">Duración máxima (horas)</label>
+                <input
+                  type="number"
+                  id="max_duration_hours"
+                  [(ngModel)]="spaceForm.rules_json.max_duration_hours"
+                  name="max_duration_hours"
+                  min="0"
+                  step="0.5"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="advance_days_required">Días de anticipación requeridos</label>
+              <input
+                type="number"
+                id="advance_days_required"
+                [(ngModel)]="spaceForm.rules_json.advance_days_required"
+                name="advance_days_required"
+                min="0"
+                placeholder="0"
+              />
+              <small class="hint">Días mínimos con anticipación para hacer una reserva</small>
+            </div>
+          </form>
+        </div>
+
+        <div class="modal-actions">
+          <button
+            class="btn-submit"
+            (click)="showCreateModal() ? createSpace() : updateSpace()"
+            [disabled]="processing()"
+          >
+            {{ processing() ? 'Procesando...' : showCreateModal() ? 'Crear Espacio' : 'Guardar Cambios' }}
+          </button>
+          <button class="btn-cancel" (click)="closeModals()" [disabled]="processing()">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Modal de Eliminación -->
+  @if (showDeleteModal()) {
+    <div class="modal-overlay" (click)="closeModals()">
+      <div class="modal-content modal-delete" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2>Eliminar Espacio</h2>
+          <button class="close-modal-btn" (click)="closeModals()">×</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="warning-icon">⚠️</div>
+          <p class="warning-text">
+            ¿Estás seguro que deseas eliminar el espacio 
+            <strong>{{ selectedSpace()?.name }}</strong>?
+          </p>
+          <p class="warning-subtext">
+            Este espacio ya no estará disponible para nuevas reservas.
+            Las reservas existentes no se verán afectadas.
+          </p>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-delete-confirm" (click)="deleteSpace()" [disabled]="processing()">
+            {{ processing() ? 'Eliminando...' : 'Sí, eliminar' }}
+          </button>
+          <button class="btn-cancel" (click)="closeModals()" [disabled]="processing()">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

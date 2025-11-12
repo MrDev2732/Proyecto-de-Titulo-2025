@@ -1,28 +1,12 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { AuthService } from '../../shared/auth/auth.service';
 import { analyzeUserRoles } from '../../shared/auth/role.utils';
 import { firstValueFrom } from 'rxjs';
-
-interface NewsItem {
-	id: string;
-	title: string;
-	body: string;
-	visible_from: string;
-	visible_until: string | null;
-	created_at: string;
-	updated_at: string;
-}
-
-interface NewsListResponse {
-	news: NewsItem[];
-	total: number;
-	page: number;
-	per_page: number;
-	total_pages: number;
-}
+import { NewsService, NewsItem } from '../../shared/services/news.service';
 
 interface Community {
 	id: string;
@@ -40,7 +24,7 @@ interface UserCommunitiesResponse {
 @Component({
 	selector: 'app-resident-dashboard',
 	standalone: true,
-	imports: [CommonModule],
+	imports: [CommonModule, RouterModule],
 	template: `
 		<div class="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
 			<!-- Header -->
@@ -69,7 +53,11 @@ interface UserCommunitiesResponse {
 
 			<!-- Main Content -->
 			<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-				<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+				<!-- Router Outlet para rutas hijas -->
+				<router-outlet></router-outlet>
+
+				<!-- Dashboard principal (solo se muestra si no hay ruta hija activa) -->
+				<div class="grid grid-cols-1 lg:grid-cols-3 gap-8" *ngIf="!isChildRouteActive()">
 
 					<!-- News Section -->
 					<div class="lg:col-span-2">
@@ -192,7 +180,9 @@ interface UserCommunitiesResponse {
 										</div>
 									</button>
 
-									<button class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+									<button 
+										(click)="goToSpaces()"
+										class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
 										<div class="flex items-center">
 											<svg class="w-5 h-5 mr-3 text-purple-600" fill="currentColor" viewBox="0 0 24 24">
 												<path d="M19,19H5V8H19M16,1V3H8V1H6V3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H18V1M17,12H12V17H17V12Z"/>
@@ -200,6 +190,20 @@ interface UserCommunitiesResponse {
 											<div>
 												<div class="font-medium text-gray-900">Reservar Espacios</div>
 												<div class="text-sm text-gray-500">Canchas, salas y plazas</div>
+											</div>
+										</div>
+									</button>
+
+									<button 
+										(click)="goToReservations()"
+										class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+										<div class="flex items-center">
+											<svg class="w-5 h-5 mr-3 text-indigo-600" fill="currentColor" viewBox="0 0 24 24">
+												<path d="M9,10H7V12H9V10M13,10H11V12H13V10M17,10H15V12H17V10M19,3H18V1H16V3H8V1H6V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M19,19H5V8H19V19Z"/>
+											</svg>
+											<div>
+												<div class="font-medium text-gray-900">Mis Reservas</div>
+												<div class="text-sm text-gray-500">Ver y gestionar reservas</div>
 											</div>
 										</div>
 									</button>
@@ -248,6 +252,7 @@ export class ResidentDashboardComponent implements OnInit {
 	private readonly http = inject(HttpClient);
 	private readonly auth = inject(AuthService);
 	private readonly router = inject(Router);
+	private readonly newsService = inject(NewsService);
 
 	// Signals for reactive state
 	news = signal<NewsItem[]>([]);
@@ -256,6 +261,10 @@ export class ResidentDashboardComponent implements OnInit {
 	downloadingCertificate = signal<boolean>(false);
 	userCommunities = signal<Community[]>([]);
 	currentUser = this.auth.currentUser;
+
+	isChildRouteActive(): boolean {
+		return this.router.url !== '/resident-dashboard';
+	}
 
 	async ngOnInit(): Promise<void> {
 		// Check if user should be here
@@ -277,7 +286,7 @@ export class ResidentDashboardComponent implements OnInit {
 			this.newsError.set(false);
 
 			const response = await firstValueFrom(
-				this.http.get<NewsListResponse>('/api/v1/news/public?page=1&per_page=10')
+				this.newsService.getMyCommunitiesNews({ page: 1, per_page: 10 })
 			);
 
 			this.news.set(response.news);
@@ -344,5 +353,13 @@ export class ResidentDashboardComponent implements OnInit {
 	logout(): void {
 		this.auth.logout();
 		this.router.navigateByUrl('/signin');
+	}
+
+	goToSpaces(): void {
+		this.router.navigate(['/resident-dashboard/spaces']);
+	}
+
+	goToReservations(): void {
+		this.router.navigate(['/resident-dashboard/reservations']);
 	}
 }

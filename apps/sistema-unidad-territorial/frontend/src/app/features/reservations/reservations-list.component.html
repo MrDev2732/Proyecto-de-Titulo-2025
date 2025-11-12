@@ -1,0 +1,143 @@
+<div class="reservations-container">
+  <div class="header">
+    <h1>Mis Reservas</h1>
+    <button class="new-btn" (click)="goToSpaces()">+ Nueva Reserva</button>
+  </div>
+
+  <div class="filters">
+    <select [(ngModel)]="statusFilter" (change)="onFilterChange()">
+      <option value="">Todas</option>
+      <option value="PENDING">Pendientes</option>
+      <option value="CONFIRMED">Confirmadas</option>
+      <option value="CANCELLED">Canceladas</option>
+    </select>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Cargando reservas...</p>
+    </div>
+  }
+
+  @if (error()) {
+    <div class="error-message">
+      <p>❌ {{ error() }}</p>
+      <button (click)="loadReservations()" class="retry-btn">Reintentar</button>
+    </div>
+  }
+
+  @if (!loading() && !error() && reservations().length === 0) {
+    <div class="empty-state">
+      <p>📭 No tienes reservas {{ statusFilter ? 'con este estado' : '' }}</p>
+      <button (click)="goToSpaces()" class="cta-btn">Crear mi primera reserva</button>
+    </div>
+  }
+
+  @if (!loading() && !error() && reservations().length > 0) {
+    <div class="reservations-list">
+      @for (reservation of reservations(); track reservation.id) {
+        <div class="reservation-card" [class.cancelled]="reservation.status === 'CANCELLED'">
+          <div class="card-header">
+            <div class="space-info">
+              <h3>{{ reservation.space_name || 'Espacio' }}</h3>
+              <span class="status-badge" [class]="reservation.status.toLowerCase()">
+                {{ getStatusLabel(reservation.status) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <div class="time-info">
+              <div class="info-row">
+                <span class="icon">📅</span>
+                <span>{{ formatDate(reservation.start_time) }}</span>
+              </div>
+              <div class="info-row">
+                <span class="icon">⏰</span>
+                <span>{{ formatTime(reservation.start_time) }} - {{ formatTime(reservation.end_time) }}</span>
+              </div>
+              <div class="info-row">
+                <span class="icon">⏱️</span>
+                <span>{{ getDuration(reservation.start_time, reservation.end_time) }}</span>
+              </div>
+            </div>
+
+            @if (reservation.cancel_reason) {
+              <div class="cancel-reason">
+                <strong>Motivo de cancelación:</strong> {{ reservation.cancel_reason }}
+              </div>
+            }
+
+            @if (reservation.status !== 'CANCELLED' && !isPast(reservation.end_time)) {
+              <div class="actions">
+                <button 
+                  class="cancel-btn"
+                  (click)="showCancelModal(reservation)"
+                >
+                  Cancelar reserva
+                </button>
+              </div>
+            }
+          </div>
+
+          <div class="card-footer">
+            <span class="created-date">Creada: {{ formatDateTime(reservation.created_at) }}</span>
+          </div>
+        </div>
+      }
+    </div>
+
+    @if (total() > perPage) {
+      <div class="pagination">
+        <button 
+          (click)="previousPage()" 
+          [disabled]="currentPage === 1"
+        >
+          ← Anterior
+        </button>
+        <span>Página {{ currentPage }} de {{ totalPages() }}</span>
+        <button 
+          (click)="nextPage()" 
+          [disabled]="currentPage >= totalPages()"
+        >
+          Siguiente →
+        </button>
+      </div>
+    }
+  }
+
+  @if (cancelModalReservation()) {
+    <div class="modal" (click)="closeCancelModal()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <h2>Cancelar Reserva</h2>
+        <p>¿Estás seguro que deseas cancelar esta reserva?</p>
+
+        <div class="reservation-summary">
+          <strong>{{ cancelModalReservation()!.space_name }}</strong>
+          <div>{{ formatDate(cancelModalReservation()!.start_time) }}</div>
+          <div>{{ formatTime(cancelModalReservation()!.start_time) }} - {{ formatTime(cancelModalReservation()!.end_time) }}</div>
+        </div>
+
+        <div class="form-group">
+          <label for="cancel-reason">Motivo (opcional)</label>
+          <textarea 
+            id="cancel-reason"
+            [(ngModel)]="cancelReason"
+            rows="3"
+            placeholder="Ingresa el motivo de la cancelación..."
+          ></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button (click)="confirmCancel()" class="confirm-btn" [disabled]="cancelling()">
+            {{ cancelling() ? 'Cancelando...' : 'Confirmar cancelación' }}
+          </button>
+          <button (click)="closeCancelModal()" class="close-btn" [disabled]="cancelling()">
+            Volver
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>
