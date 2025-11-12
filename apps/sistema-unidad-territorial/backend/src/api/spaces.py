@@ -21,7 +21,7 @@ from src.schemas.spaces import (
     SpaceListResponse
 )
 from src.core.logging import get_logger
-from src.core.dependencies import get_current_active_user
+from src.core.dependencies import get_current_active_user, require_admin_permissions
 from src.database.repositories import SpaceRepository
 
 
@@ -68,7 +68,7 @@ async def get_user_community_id(user_id: UUID, session: AsyncSession) -> Optiona
 )
 async def create_space(
     space_data: SpaceCreate = ...,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_permissions),
     session: AsyncSession = Depends(get_db_session)
 ) -> SpaceResponse:
     """
@@ -255,7 +255,7 @@ async def get_space(
 async def update_space(
     space_id: UUID = Path(..., description="ID del espacio"),
     space_data: SpaceUpdate = ...,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_permissions),
     session: AsyncSession = Depends(get_db_session)
 ) -> SpaceResponse:
     """Actualizar información de un espacio."""
@@ -308,7 +308,7 @@ async def update_space(
 )
 async def delete_space(
     space_id: UUID = Path(..., description="ID del espacio"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_permissions),
     session: AsyncSession = Depends(get_db_session)
 ):
     """Deshabilitar un espacio."""
