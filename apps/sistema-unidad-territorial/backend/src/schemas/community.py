@@ -27,8 +27,11 @@ class CommunityResponse(BaseModel):
 
 class RegistrationRequestAttachmentCreate(BaseModel):
     """Schema para adjuntos en solicitudes de registro."""
+    bucket: str = Field(..., description="Bucket donde se almacena el archivo")
+    storage_key: str = Field(..., description="Clave de almacenamiento del archivo")
+    sha256: str = Field(..., description="Hash SHA256 del archivo")
+    mime_type: str = Field(..., description="Tipo MIME del archivo")
     kind: AttachmentKind = Field(..., description="Tipo de documento")
-    url: str = Field(..., description="URL del archivo subido")
 
 
 class RegistrationRequestCreateData(BaseModel):
@@ -45,9 +48,13 @@ class RegistrationRequestCreateData(BaseModel):
 class RegistrationRequestAttachmentResponse(BaseModel):
     """Response schema para adjuntos de solicitudes de registro."""
     id: UUID = Field(..., description="ID del adjunto")
-    url: str = Field(..., description="URL del archivo adjunto")
+    bucket: str = Field(..., description="Bucket donde se almacena el archivo")
+    storage_key: str = Field(..., description="Clave de almacenamiento del archivo")
+    sha256: str = Field(..., description="Hash SHA256 del archivo")
+    mime_type: str = Field(..., description="Tipo MIME del archivo")
     kind: AttachmentKind = Field(..., description="Tipo de adjunto")
     created_at: datetime = Field(..., description="Fecha de creación")
+    url: str = Field(..., description="URL del archivo (generada desde storage_key)")
 
     class Config:
         from_attributes = True
