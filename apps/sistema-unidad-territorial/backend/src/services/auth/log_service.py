@@ -55,7 +55,6 @@ class AuthenticationLogService:
             user_agent: User agent del navegador
             error_code: Código de error interno
             mfa_used: Si se utilizó MFA
-            tenant_id: ID del tenant
             request_id: ID de correlación
 
         Returns:
@@ -65,13 +64,11 @@ class AuthenticationLogService:
             # Generar request_id si no se proporciona
             if not request_id:
                 request_id = uuid.uuid4()
-            # Obtener tenant_id apropiado para el usuario
-            tenant_id = user.tenant_id if user else None
 
             # Crear log de autenticación
             auth_log = await self.repository.create_auth_log(
                 session=self.session,
-                tenant_id=tenant_id,
+                tenant_id=user.tenant_id,
                 user_id=user.id if user else None,
                 user_session_id=user_session.id if user_session else None,
                 email=email,
