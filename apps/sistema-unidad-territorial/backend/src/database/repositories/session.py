@@ -10,6 +10,7 @@ from src.database import (
     User, 
     UserSession,
     RoleAssignment,
+    ResidentMembership,
 )
 from src.core.logging import get_logger
 
@@ -77,7 +78,8 @@ class SessionRepository:
             .options(
                 selectinload(UserSession.user).selectinload(User.primary_email),
                 selectinload(UserSession.user).selectinload(User.emails),
-                selectinload(UserSession.user).selectinload(User.role_assignments).selectinload(RoleAssignment.role)
+                selectinload(UserSession.user).selectinload(User.role_assignments).selectinload(RoleAssignment.role),
+                selectinload(UserSession.user).selectinload(User.memberships).selectinload(ResidentMembership.community)
             )
             .where(
                 UserSession.access_token_hash == access_token_hash,
@@ -106,7 +108,8 @@ class SessionRepository:
             .options(
                 selectinload(UserSession.user).selectinload(User.primary_email),
                 selectinload(UserSession.user).selectinload(User.emails),
-                selectinload(UserSession.user).selectinload(User.role_assignments).selectinload(RoleAssignment.role)
+                selectinload(UserSession.user).selectinload(User.role_assignments).selectinload(RoleAssignment.role),
+                selectinload(UserSession.user).selectinload(User.memberships).selectinload(ResidentMembership.community)
             )
             .where(
                 UserSession.refresh_token_hash == refresh_token_hash,
