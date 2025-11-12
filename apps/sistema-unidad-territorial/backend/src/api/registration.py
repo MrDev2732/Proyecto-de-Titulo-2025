@@ -219,27 +219,33 @@ async def create_registration_request(
         # Actualizar el ID de la solicitud para que coincida con el directorio
         registration_request.id = request_id
 
-        # Agregar documentos requeridos con las rutas locales
+        # Agregar documentos requeridos con toda la información del archivo
         required_documents = [
-            (saved_files['id_card_front_url'], "id_card_front"),
-            (saved_files['id_card_back_url'], "id_card_back"),
-            (saved_files['utility_bill_url'], "utility_bill")
+            (saved_files['id_card_front'], "id_card_front"),
+            (saved_files['id_card_back'], "id_card_back"),
+            (saved_files['utility_bill'], "utility_bill")
         ]
 
-        for file_path, kind in required_documents:
+        for file_info, kind in required_documents:
             await RegistrationRequestRepository.add_attachment_to_request(
                 session=session,
                 request_id=registration_request.id,
-                url=file_path,
+                bucket=file_info['bucket'],
+                storage_key=file_info['storage_key'],
+                sha256=file_info['sha256'],
+                mime_type=file_info['mime_type'],
                 kind=kind
             )
 
         # Agregar archivos adicionales si existen
-        for additional_path in saved_files.get('additional_files', []):
+        for additional_file_info in saved_files.get('additional_files', []):
             await RegistrationRequestRepository.add_attachment_to_request(
                 session=session,
                 request_id=registration_request.id,
-                url=additional_path,
+                bucket=additional_file_info['bucket'],
+                storage_key=additional_file_info['storage_key'],
+                sha256=additional_file_info['sha256'],
+                mime_type=additional_file_info['mime_type'],
                 kind="other"
             )
 
