@@ -64,5 +64,14 @@ class AddressEvidence(TenantSoftDeleteModel):
     # Relationships
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
 
+    @property
+    def url(self) -> str:
+        """
+        Propiedad computada para generar URL del archivo.
+        Mantiene compatibilidad con código existente.
+        Retorna solo el storage_key porque el router ya tiene el prefijo /files.
+        """
+        return self.storage_key
+
     def __repr__(self) -> str:
         return f"AddressEvidence(id={self.id}, user_id={self.user_id}, type={self.type})"
