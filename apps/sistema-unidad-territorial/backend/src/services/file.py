@@ -2,10 +2,12 @@
 Servicio para manejo de archivos y almacenamiento local.
 """
 
+import hashlib
 import shutil
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID, uuid4
+
 from fastapi import UploadFile, HTTPException, status
 
 from src.core.config import get_settings
@@ -79,7 +81,7 @@ class FileService:
         request_id: UUID,
         file: UploadFile,
         document_type: str
-    ) -> str:
+    ) -> Dict[str, str]:
         """
         Guardar archivo de evidencia en el directorio correspondiente.
 
@@ -89,7 +91,11 @@ class FileService:
             document_type: Tipo de documento (id_card_front, id_card_back, utility_bill)
 
         Returns:
-            str: Ruta relativa del archivo guardado
+            Dict[str, str]: Diccionario con información del archivo guardado:
+                - bucket: Nombre del bucket (directorio base)
+                - storage_key: Clave de almacenamiento (ruta relativa)
+                - sha256: Hash SHA256 del archivo
+                - mime_type: Tipo MIME del archivo
         """
         # Validar archivo
         FileService.validate_file(file)
@@ -103,15 +109,34 @@ class FileService:
         file_path = evidence_dir / unique_filename
 
         try:
-            # Guardar archivo
+            # Calcular hash SHA256 mientras se guarda el archivo
+            sha256_hash = hashlib.sha256()
+
+            # Guardar archivo y calcular hash
             with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+                # Leer y escribir en chunks para manejar archivos grandes
+                while chunk := file.file.read(8192):
+                    sha256_hash.update(chunk)
+                    buffer.write(chunk)
 
-            # Retornar ruta relativa
-            relative_path = f"evidence-{request_id}/{unique_filename}"
+            # Obtener tipo MIME del archivo
+            mime_type = file.content_type or FileService._get_mime_type_from_extension(file_extension)
 
-            logger.info(f"✅ Archivo guardado: {relative_path}")
-            return relative_path
+            # Generar ruta relativa (storage_key)
+            storage_key = f"evidence-{request_id}/{unique_filename}"
+
+            # Bucket es el directorio base de uploads
+            bucket = str(evidence_dir.parent.name) if evidence_dir.parent.name != "." else "uploads"
+
+            file_info = {
+                "bucket": bucket,
+                "storage_key": storage_key,
+                "sha256": sha256_hash.hexdigest(),
+                "mime_type": mime_type
+            }
+
+            logger.info(f"✅ Archivo guardado: {storage_key} (SHA256: {file_info['sha256'][:16]}...)")
+            return file_info
 
         except Exception as e:
             logger.error(f"❌ Error guardando archivo: {e}")
@@ -121,6 +146,25 @@ class FileService:
             )
         finally:
             file.file.close()
+    
+    @staticmethod
+    def _get_mime_type_from_extension(extension: str) -> str:
+        """
+        Obtener tipo MIME basado en la extensión del archivo.
+
+        Args:
+            extension: Extensión del archivo (incluye el punto)
+
+        Returns:
+            str: Tipo MIME correspondiente
+        """
+        mime_types = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.pdf': 'application/pdf'
+        }
+        return mime_types.get(extension.lower(), 'application/octet-stream')
 
     @staticmethod
     async def save_multiple_evidence_files(
@@ -129,7 +173,7 @@ class FileService:
         id_card_back: UploadFile,
         utility_bill: UploadFile,
         additional_files: Optional[List[UploadFile]] = None
-    ) -> dict:
+    ) -> Dict[str, any]:
         """
         Guardar múltiples archivos de evidencia para una solicitud.
 
@@ -141,32 +185,36 @@ class FileService:
             additional_files: Archivos adicionales opcionales
 
         Returns:
-            dict: Diccionario con las rutas de los archivos guardados
+            dict: Diccionario con información de los archivos guardados:
+                - id_card_front: Dict con bucket, storage_key, sha256, mime_type
+                - id_card_back: Dict con bucket, storage_key, sha256, mime_type
+                - utility_bill: Dict con bucket, storage_key, sha256, mime_type
+                - additional_files: Lista de dicts con información de archivos adicionales
         """
         try:
             # Guardar archivos requeridos
             files_saved = {
-                'id_card_front_url': await FileService.save_evidence_file(
+                'id_card_front': await FileService.save_evidence_file(
                     request_id, id_card_front, "id_card_front"
                 ),
-                'id_card_back_url': await FileService.save_evidence_file(
+                'id_card_back': await FileService.save_evidence_file(
                     request_id, id_card_back, "id_card_back"
                 ),
-                'utility_bill_url': await FileService.save_evidence_file(
+                'utility_bill': await FileService.save_evidence_file(
                     request_id, utility_bill, "utility_bill"
                 )
             }
 
             # Guardar archivos adicionales si existen
-            additional_urls = []
+            additional_file_infos = []
             if additional_files:
                 for i, additional_file in enumerate(additional_files):
-                    additional_url = await FileService.save_evidence_file(
+                    file_info = await FileService.save_evidence_file(
                         request_id, additional_file, f"additional_{i}"
                     )
-                    additional_urls.append(additional_url)
+                    additional_file_infos.append(file_info)
 
-            files_saved['additional_files'] = additional_urls
+            files_saved['additional_files'] = additional_file_infos
 
             return files_saved
 
