@@ -34,7 +34,6 @@ class PasswordResetService:
     async def request_password_reset(
         self,
         request: PasswordResetRequest,
-        ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> PasswordResetResponse:
         """
@@ -86,7 +85,6 @@ class PasswordResetService:
             reset_token = await self.repository.create_reset_token(
                 user_id=user.id,
                 expires_in_minutes=15,
-                ip_address=ip_address,
                 user_agent=user_agent
             )
 
