@@ -313,7 +313,7 @@ class ReservationRepository:
         total = count_result.scalar()
 
         # Calcular paginación
-        total_pages = (total + per_page - 1) // per_page if total > 0 else 0
+        total_pages = (total + per_page - 1) // per_page if total > 0 else 1
         offset = (page - 1) * per_page
 
         # Ejecutar query con paginación
