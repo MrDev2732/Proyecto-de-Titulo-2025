@@ -218,7 +218,10 @@ class RegistrationRequestRepository:
     async def add_attachment_to_request(
         session: AsyncSession,
         request_id: UUID,
-        url: str,
+        bucket: str,
+        storage_key: str,
+        sha256: str,
+        mime_type: str,
         kind: str
     ) -> RegistrationRequestAttachment:
         """
@@ -227,15 +230,21 @@ class RegistrationRequestRepository:
         Args:
             session: Sesión de base de datos
             request_id: ID de la solicitud
-            url: URL del archivo
-            kind: Tipo de adjunto
+            bucket: Bucket donde se almacena el archivo
+            storage_key: Clave de almacenamiento del archivo
+            sha256: Hash SHA256 del archivo
+            mime_type: Tipo MIME del archivo
+            kind: Tipo de adjunto (AttachmentKind)
 
         Returns:
             RegistrationRequestAttachment: Adjunto creado
         """
         attachment = RegistrationRequestAttachment(
             registration_request_id=request_id,
-            url=url,
+            bucket=bucket,
+            storage_key=storage_key,
+            sha256=sha256,
+            mime_type=mime_type,
             kind=kind
         )
         session.add(attachment)
