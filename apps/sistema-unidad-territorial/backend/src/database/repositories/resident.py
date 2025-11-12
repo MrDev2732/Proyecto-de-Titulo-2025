@@ -179,7 +179,10 @@ class AddressEvidenceRepository:
         tenant_id: UUID,
         user_id: UUID,
         evidence_type: str,
-        url: str
+        bucket: str,
+        storage_key: str,
+        sha256: str,
+        mime_type: str
     ) -> AddressEvidence:
         """
         Crear una nueva evidencia de dirección.
@@ -189,7 +192,10 @@ class AddressEvidenceRepository:
             tenant_id: ID del tenant
             user_id: ID del usuario
             evidence_type: Tipo de evidencia
-            url: URL del archivo
+            bucket: Bucket donde se almacena el archivo
+            storage_key: Clave de almacenamiento del archivo
+            sha256: Hash SHA256 del archivo
+            mime_type: Tipo MIME del archivo
 
         Returns:
             AddressEvidence: Evidencia creada
@@ -198,7 +204,10 @@ class AddressEvidenceRepository:
             tenant_id=tenant_id,
             user_id=user_id,
             type=evidence_type,
-            url=url
+            bucket=bucket,
+            storage_key=storage_key,
+            sha256=sha256,
+            mime_type=mime_type
         )
 
         session.add(evidence)
@@ -240,7 +249,10 @@ class AddressEvidenceRepository:
                 tenant_id=tenant_id,
                 user_id=user_id,
                 evidence_type=evidence_type.value,
-                url=attachment.url
+                bucket=attachment.bucket,
+                storage_key=attachment.storage_key,
+                sha256=attachment.sha256,
+                mime_type=attachment.mime_type
             )
 
             evidences.append(evidence)
