@@ -98,19 +98,21 @@ class RoleAssignment(SoftDeleteBaseModel):
     )
 
     # Relationships
-    role: Mapped["Role"] = relationship("Role", foreign_keys=[role_id])
-    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    role: Mapped["Role"] = relationship("Role", foreign_keys=[role_id], lazy="noload")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], lazy="noload")
 
     # Relationships polimórficos (se resuelven en tiempo de ejecución)
     tenant: Mapped[Optional["Tenant"]] = relationship(
         "Tenant", 
         foreign_keys=[tenant_id],
-        viewonly=True
+        viewonly=True,
+        lazy="noload"
     )
     community: Mapped[Optional["Community"]] = relationship(
         "Community",
         viewonly=True,
-        primaryjoin="and_(foreign(RoleAssignment.scope_id) == Community.id, RoleAssignment.scope_type == 'community')"
+        primaryjoin="and_(foreign(RoleAssignment.scope_id) == Community.id, RoleAssignment.scope_type == 'community')",
+        lazy="noload"
     )
 
     @property
