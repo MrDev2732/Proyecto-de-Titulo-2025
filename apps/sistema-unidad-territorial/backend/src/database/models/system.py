@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from uuid import UUID as PyUUID
+import hashlib
 import secrets
 import string
 
@@ -238,7 +239,7 @@ class NotificationLog(BaseModel):
     )
 
     # Relationships
-    outbox: Mapped[Optional["Outbox"]] = relationship("Outbox", foreign_keys=[outbox_id])
+    outbox: Mapped[Optional["Outbox"]] = relationship("Outbox", foreign_keys=[outbox_id], lazy="noload")
 
     def __repr__(self) -> str:
         return f"NotificationLog(id={self.id}, type={self.type}, destination={self.destination}, status={self.status})"
@@ -311,7 +312,7 @@ class AuditLog(BaseModel):
     )
 
     # Relationships
-    actor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[actor_id])
+    actor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[actor_id], lazy="noload")
 
     def __repr__(self) -> str:
         return f"AuditLog(id={self.id}, action={self.action}, entity={self.entity}, occurred_at={self.occurred_at})"
@@ -328,7 +329,12 @@ class PasswordResetToken(BaseModel):
         comment="Usuario que solicita el reset"
     )
 
-    # Solo token hash para seguridad
+    # Código de 6 dígitos y token hash para seguridad
+    code: Mapped[str] = Column(
+        Text,
+        nullable=False,
+        comment="Código de 6 dígitos para validación"
+    )
     token: Mapped[str] = Column(
         Text,
         nullable=False,
@@ -354,7 +360,6 @@ class PasswordResetToken(BaseModel):
     )
 
     # Metadatos adicionales
-
     user_agent: Mapped[Optional[str]] = Column(
         Text, 
         nullable=True,
@@ -373,7 +378,7 @@ class PasswordResetToken(BaseModel):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], lazy="noload")
 
     @classmethod
     def generate_code(cls) -> str:
@@ -405,10 +410,13 @@ class PasswordResetToken(BaseModel):
         """
         now = now_chile()
         expires_at = now + timedelta(minutes=expires_in_minutes)
+        token = cls.generate_token()
 
         return cls(
             user_id=user_id,
-            token=cls.generate_token(),
+            code=cls.generate_code(),
+            token=token,
+            token_hash=hashlib.sha256(token.encode()).digest(),
             expires_at=expires_at,
             user_agent=user_agent
         )
