@@ -56,14 +56,17 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
 
         # Verificar si la ruta requiere autenticación
         if self._requires_auth(request):
+            logger.info(f"🔐 SessionTrackingMiddleware: Ruta requiere auth: {request.url.path}")
             # Extraer token del header Authorization
             auth_header = request.headers.get("authorization")
             if auth_header and auth_header.startswith("Bearer "):
                 token = auth_header.split(" ")[1]
+                logger.info(f"🎫 SessionTrackingMiddleware: Token encontrado en header")
 
                 # Verificar token y actividad de sesión
                 session_valid = await self._check_session_activity(token)
                 if not session_valid:
+                    logger.error(f"❌ SessionTrackingMiddleware: Sesión NO válida, bloqueando request")
                     return JSONResponse(
                         status_code=401,
                         content={
@@ -72,8 +75,11 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
                         }
                     )
 
+                logger.info(f"✅ SessionTrackingMiddleware: Sesión válida, continuando")
                 # Actualizar última actividad
                 await self._update_session_activity(token)
+            else:
+                logger.warning(f"⚠️ SessionTrackingMiddleware: No se encontró token en header Authorization")
 
         # Continuar con el procesamiento normal
         response = await call_next(request)
@@ -121,12 +127,15 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
             bool: True si la sesión es válida
         """
         # Verificar token JWT primero
+        logger.info(f"🔍 SessionTrackingMiddleware: Verificando token (primeros 20 chars): {token[:20]}...")
         token_data = verify_token(token, expected_type="access")
         if not token_data:
+            logger.warning(f"⚠️ SessionTrackingMiddleware: Token inválido o expirado")
             return False
 
         user_id = token_data.user_id
         current_time = datetime.utcnow()
+        logger.info(f"✅ SessionTrackingMiddleware: Token válido para user {user_id}")
 
         # Verificar última actividad
         last_activity = self.user_sessions.get(user_id)
@@ -135,7 +144,7 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
             if time_since_activity > self.inactivity_timeout:
                 # Remover sesión expirada
                 self.user_sessions.pop(user_id, None)
-                logger.info(f"Sesión expirada por inactividad: {user_id}")
+                logger.info(f"⏰ Sesión expirada por inactividad: {user_id}")
                 return False
 
         return True
