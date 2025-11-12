@@ -19,6 +19,7 @@ from src.database import (
     UserOauthIdentity, 
     RoleAssignment,
     UserStatus,
+    ResidentMembership,
 )
 from src.database.utils import now_chile
 from src.core.logging import get_logger
@@ -34,14 +35,14 @@ class AuthRepository:
     @staticmethod
     async def find_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
         """
-        Buscar usuario por email.
+        Buscar usuario por email con sus membresías y comunidades.
 
         Args:
             session: Sesión de base de datos
             email: Email a buscar
 
         Returns:
-            User: Usuario encontrado o None
+            User: Usuario encontrado con sus membresías cargadas, o None
         """
         # Buscar por email en la tabla user_emails y hacer join con users
         result = await session.execute(
@@ -54,7 +55,9 @@ class AuthRepository:
                     selectinload(RoleAssignment.role),
                     selectinload(RoleAssignment.tenant),
                     selectinload(RoleAssignment.community)
-                )
+                ),
+                # Cargar membresías con sus comunidades (para obtener tenant_id)
+                selectinload(User.memberships).selectinload(ResidentMembership.community)
             )
             .where(UserEmail.email == email.lower())
         )
@@ -63,14 +66,14 @@ class AuthRepository:
     @staticmethod
     async def find_user_by_id(session: AsyncSession, user_id: UUID) -> Optional[User]:
         """
-        Buscar usuario por ID.
+        Buscar usuario por ID con sus membresías y comunidades.
 
         Args:
             session: Sesión de base de datos
             user_id: ID del usuario
 
         Returns:
-            User: Usuario encontrado o None
+            User: Usuario encontrado con sus membresías cargadas, o None
         """
         result = await session.execute(
             select(User)
@@ -81,7 +84,9 @@ class AuthRepository:
                     selectinload(RoleAssignment.role),
                     selectinload(RoleAssignment.tenant),
                     selectinload(RoleAssignment.community)
-                )
+                ),
+                # Cargar membresías con sus comunidades (para obtener tenant_id)
+                selectinload(User.memberships).selectinload(ResidentMembership.community)
             )
             .where(User.id == user_id)
         )
