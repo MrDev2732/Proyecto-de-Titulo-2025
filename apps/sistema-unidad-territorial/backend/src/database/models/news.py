@@ -70,7 +70,8 @@ class News(TenantSoftDeleteModel):
     community = relationship(
         "Community",
         foreign_keys=[community_id],
-        back_populates=None
+        back_populates=None,
+        lazy="noload"
     )
 
     def is_active(self, check_date: Optional[datetime] = None) -> bool:
