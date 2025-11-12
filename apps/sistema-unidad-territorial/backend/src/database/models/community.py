@@ -60,23 +60,27 @@ class Community(SoftDeleteBaseModel):
     tenant = relationship(
         "Tenant",
         foreign_keys=[tenant_id],
-        back_populates=None
+        back_populates=None,
+        lazy="noload"
     )
     memberships = relationship(
         "ResidentMembership",
         back_populates="community",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="noload"
     )
     registration_requests = relationship(
         "RegistrationRequest",
         back_populates="community",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="noload"
     )
     # Role assignments for this community (unified table)
     role_assignments = relationship(
         "RoleAssignment",
         primaryjoin="and_(Community.id == foreign(RoleAssignment.scope_id), RoleAssignment.scope_type == 'community')",
-        viewonly=True
+        viewonly=True,
+        lazy="noload"
     )
 
     def __repr__(self) -> str:
@@ -162,11 +166,13 @@ class ResidentMembership(SoftDeleteBaseModel):
     user = relationship(
         "User",
         foreign_keys=[user_id],
-        back_populates=None
+        back_populates="memberships",
+        lazy="noload"
     )
     community = relationship(
         "Community",
-        back_populates="memberships"
+        back_populates="memberships",
+        lazy="noload"
     )
 
     @property
@@ -274,21 +280,25 @@ class RegistrationRequest(BaseModel):
     tenant = relationship(
         "Tenant",
         foreign_keys=[tenant_id],
-        back_populates=None
+        back_populates=None,
+        lazy="noload"
     )
     community = relationship(
         "Community",
-        back_populates="registration_requests"
+        back_populates="registration_requests",
+        lazy="noload"
     )
     decided_by_user = relationship(
         "User",
         foreign_keys=[decided_by],
-        back_populates=None
+        back_populates=None,
+        lazy="noload"
     )
     attachments = relationship(
         "RegistrationRequestAttachment",
         back_populates="registration_request",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="noload"
     )
 
     def __repr__(self) -> str:
@@ -341,8 +351,18 @@ class RegistrationRequestAttachment(BaseModel):
     # Relationships
     registration_request = relationship(
         "RegistrationRequest",
-        back_populates="attachments"
+        back_populates="attachments",
+        lazy="noload"
     )
+
+    @property
+    def url(self) -> str:
+        """
+        Propiedad computada para generar URL del archivo.
+        Mantiene compatibilidad con código existente.
+        Retorna solo el storage_key porque el router ya tiene el prefijo /files.
+        """
+        return self.storage_key
 
     def __repr__(self) -> str:
         return f"RegistrationRequestAttachment(id={self.id}, registration_request_id={self.registration_request_id}, kind={self.kind})"
