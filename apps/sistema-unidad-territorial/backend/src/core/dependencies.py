@@ -26,7 +26,8 @@ from src.core.logging import get_logger
 logger = get_logger(__name__)
 
 # Configuración del esquema de seguridad Bearer
-security = HTTPBearer()
+# auto_error=False para manejar errores personalizados
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
@@ -46,17 +47,31 @@ async def get_current_user(
     Raises:
         HTTPException: Si el token es inválido, la sesión no existe o el usuario no está activo
     """
+    logger.info(f"🔍 get_current_user: Credentials recibidas: {credentials is not None}")
+    
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No se pudieron validar las credenciales",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+    # Verificar que se recibieron credenciales
+    if credentials is None:
+        logger.error("❌ No se recibieron credenciales Bearer")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No se proporcionó token de autenticación"
+        )
+
+    logger.info(f"🔑 Token recibido (primeros 20 chars): {credentials.credentials[:20]}...")
+    
     # Validar token y sesión
     user = await AuthService.validate_session(session, credentials.credentials)
     if user is None:
+        logger.error("❌ validate_session devolvió None")
         raise credentials_exception
 
+    logger.info(f"✅ Usuario autenticado: {user.email}")
     return user
 
 
@@ -369,3 +384,61 @@ async def require_registration_request_access(
 
     logger.info(f"✅ User {current_user.email} granted access to registration request {request_id}")
     return current_user
+
+
+async def require_admin_permissions(
+    current_user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_db_session)
+) -> User:
+    """
+    Dependencia que valida que el usuario tenga permisos administrativos.
+
+    Valida que el usuario sea:
+    - SUPERADMIN (acceso global)
+    - ADMIN de tenant (acceso a todas las comunidades del tenant)
+    - MODERATOR de comunidad (acceso a su comunidad específica)
+
+    Args:
+        current_user: Usuario actual autenticado
+        session: Sesión de base de datos
+
+    Returns:
+        User: Usuario con permisos administrativos validados
+
+    Raises:
+        HTTPException: Si el usuario no tiene permisos administrativos
+    """
+    # Obtener todos los roles del usuario
+    user_roles = [assignment.role.name for assignment in current_user.role_assignments]
+
+    # SUPERADMIN tiene acceso a todo
+    if "SUPERADMIN" in user_roles:
+        logger.info(f"👑 SUPERADMIN {current_user.email} has admin permissions")
+        return current_user
+
+    # Verificar si es ADMIN de tenant
+    tenant_admin_assignments = [
+        assignment for assignment in current_user.role_assignments
+        if assignment.role.name == "ADMIN" and assignment.scope_type == 'tenant'
+    ]
+
+    if tenant_admin_assignments:
+        logger.info(f"👨‍💼 ADMIN {current_user.email} has admin permissions over tenant")
+        return current_user
+
+    # Verificar si es MODERATOR de comunidad
+    community_moderator_assignments = [
+        assignment for assignment in current_user.role_assignments
+        if assignment.role.name == "MODERATOR" and assignment.scope_type == 'community'
+    ]
+
+    if community_moderator_assignments:
+        logger.info(f"👮 MODERATOR {current_user.email} has admin permissions over community")
+        return current_user
+
+    # Si no tiene ningún rol administrativo, denegar acceso
+    logger.warning(f"🚫 User {current_user.email} denied admin permissions - no administrative role found")
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="No tienes permisos administrativos. Se requiere rol de ADMIN, MODERATOR o SUPERADMIN"
+    )
