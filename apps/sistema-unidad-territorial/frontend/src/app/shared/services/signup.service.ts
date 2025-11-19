@@ -11,6 +11,9 @@ export interface SignupFormData {
   full_name: string;
   rut: string;
   address: string;
+  phone_number?: string;
+  email_notifications_enabled?: boolean;
+  whatsapp_notifications_enabled?: boolean;
   provider?: string;
 }
 
@@ -78,6 +81,15 @@ export class SignupService {
     formDataToSend.append('rut', formData.rut);
     formDataToSend.append('address', formData.address);
     formDataToSend.append('provider', formData.provider || 'google');
+
+    // Agregar teléfono si está presente
+    if (formData.phone_number) {
+      formDataToSend.append('phone_number', formData.phone_number);
+    }
+
+    // Agregar preferencias de notificaciones (siempre se envían, con valores por defecto si no están definidos)
+    formDataToSend.append('email_notifications_enabled', String(formData.email_notifications_enabled ?? true));
+    formDataToSend.append('whatsapp_notifications_enabled', String(formData.whatsapp_notifications_enabled ?? false));
 
     // Agregar archivos requeridos
     formDataToSend.append('id_card_front', files.id_card_front);
