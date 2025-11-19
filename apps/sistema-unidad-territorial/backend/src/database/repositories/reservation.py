@@ -94,7 +94,7 @@ class ReservationRepository:
             daily_hours = result.scalar() or 0
 
             if daily_hours + duration_hours > max_hours_daily:
-                return False, f"Excede el límite diario de {max_hours_daily} horas. Ya tiene {daily_hours:.1f} horas reservadas hoy."
+                return False, f"Esta reserva de {duration_hours:.1f} hora(s) excede el límite diario de {max_hours_daily} hora(s). Ya tienes {daily_hours:.1f} hora(s) reservadas hoy."
 
         # Verificar límite semanal
         if max_hours_weekly:
@@ -120,7 +120,7 @@ class ReservationRepository:
             weekly_hours = result.scalar() or 0
 
             if weekly_hours + duration_hours > max_hours_weekly:
-                return False, f"Excede el límite semanal de {max_hours_weekly} horas. Ya tiene {weekly_hours:.1f} horas reservadas esta semana."
+                return False, f"Esta reserva de {duration_hours:.1f} hora(s) excede el límite semanal de {max_hours_weekly} hora(s). Ya tienes {weekly_hours:.1f} hora(s) reservadas esta semana."
 
         return True, None
 
@@ -427,3 +427,47 @@ class ReservationRepository:
             return None
 
         return reservation.space
+
+    async def update_expired_reservations(self) -> int:
+        """
+        Actualizar automáticamente el estado de reservas expiradas.
+
+        Encuentra todas las reservas con estado PENDING cuyo end_time ya pasó
+        y las marca como EXPIRED.
+
+        NOTA: Las reservas CONFIRMED no se marcan como EXPIRED porque representan
+        reservas que fueron utilizadas exitosamente. Solo las PENDING que expiraron
+        sin ser confirmadas se marcan como EXPIRED.
+
+        Returns:
+            int: Número de reservas actualizadas
+        """
+        current_time = now_chile()
+
+        # Buscar solo reservas PENDING expiradas
+        result = await self.db.execute(
+            select(Reservation)
+            .where(
+                and_(
+                    Reservation.deleted_at.is_(None),
+                    Reservation.status == ReservationStatus.PENDING.value,
+                    Reservation.end_time < current_time
+                )
+            )
+        )
+        expired_reservations = list(result.scalars().all())
+
+        if not expired_reservations:
+            return 0
+
+        # Actualizar estado a EXPIRED
+        count = 0
+        for reservation in expired_reservations:
+            reservation.status = ReservationStatus.EXPIRED.value
+            count += 1
+
+        await self.db.flush()
+        await self.db.commit()
+
+        logger.info(f"✅ Updated {count} pending reservations to EXPIRED status")
+        return count
