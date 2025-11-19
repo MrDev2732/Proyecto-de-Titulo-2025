@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.config import settings
@@ -26,6 +28,7 @@ from src.services.auth import AuthInitializer
 from src.services.news_initializer import NewsInitializer
 from src.database.session import get_transaction_session
 from src.database.utils import DatabaseSetup
+from src.events.setup import setup_event_observers, teardown_event_observers
 
 
 # Configurar logging
@@ -57,6 +60,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await NewsInitializer.initialize_sample_data(session)
         logger.info("✅ Datos de noticias inicializados")
 
+        # Configurar sistema de eventos y observadores
+        setup_event_observers()
+        logger.info("✅ Sistema de eventos y notificaciones configurado")
+
         yield
 
     except Exception as e:
@@ -64,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         raise
     finally:
         logger.info("🔄 Cerrando Sistema Unidad Territorial Backend...")
+        teardown_event_observers()
 
 
 # Crear aplicación FastAPI
@@ -149,7 +157,7 @@ async def log_requests(request: Request, call_next):
         raise
 
 
-# Incluir routers
+# Incluir routers de la API
 app.include_router(auth_router, prefix=settings.api.v1_str)
 app.include_router(password_reset_router, prefix=settings.api.v1_str)
 app.include_router(tenant_router, prefix=settings.api.v1_str)
@@ -181,22 +189,6 @@ async def health_check():
     }
 
 
-# Endpoint raíz
-@app.get("/", tags=["Sistema"])
-async def root():
-    """
-    Endpoint raíz del API.
-
-    Información básica sobre el servicio.
-    """
-    return {
-        "message": "Sistema Unidad Territorial - Backend API",
-        "version": "1.0.0",
-        "docs": f"{settings.api.v1_str}/docs",
-        "health": "/health"
-    }
-
-
 # Endpoint de información del API
 @app.get(f"{settings.api.v1_str}/info", tags=["Sistema"])
 async def api_info():
@@ -217,6 +209,61 @@ async def api_info():
             "health": "/health"
         }
     }
+
+
+# ========================================
+# CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (FRONTEND)
+# ========================================
+
+# Ruta al build del frontend Angular
+# __file__ = apps/sistema-unidad-territorial/backend/src/main.py
+# .parent.parent.parent.parent = apps/
+# / "dist" / ... = apps/dist/sistema-unidad-territorial/frontend/browser/
+FRONTEND_BUILD_PATH = Path(__file__).parent.parent.parent.parent / "dist" / "sistema-unidad-territorial" / "frontend" / "browser"
+
+# Montar archivos estáticos del frontend (solo si existe el directorio)
+if FRONTEND_BUILD_PATH.exists() and FRONTEND_BUILD_PATH.is_dir():
+    # Servir archivos estáticos (CSS, JS, imágenes, etc.)
+    app.mount(
+        "/assets",
+        StaticFiles(directory=str(FRONTEND_BUILD_PATH / "assets")),
+        name="static-assets"
+    )
+
+    logger.info(f"✅ Archivos estáticos del frontend montados desde: {FRONTEND_BUILD_PATH}")
+
+    # Catch-all route para servir index.html (debe ser la última ruta)
+    # Esto permite que Angular maneje el routing del lado del cliente
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """
+        Servir el frontend Angular para todas las rutas que no sean API.
+
+        Esto permite que Angular maneje el routing del lado del cliente.
+        Si la ruta no existe, redirige a signin.
+        """
+        # Si la ruta es para API, no servir el frontend
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+
+        # Si es un archivo estático (con extensión), intentar servirlo
+        if "." in full_path.split("/")[-1]:
+            file_path = FRONTEND_BUILD_PATH / full_path
+            if file_path.exists() and file_path.is_file():
+                return FileResponse(str(file_path))
+            # Si el archivo no existe, redirigir a signin
+            return RedirectResponse(url="/signin", status_code=302)
+
+        # Para rutas de Angular (sin extensión), servir index.html
+        index_path = FRONTEND_BUILD_PATH / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
+
+        # Si no existe el frontend, redirigir a signin
+        return RedirectResponse(url="/signin", status_code=302)
+else:
+    logger.warning(f"⚠️ Frontend build no encontrado en: {FRONTEND_BUILD_PATH}")
+    logger.info("   💡 Ejecuta 'nx build frontend --configuration=production' para generar el build")
 
 
 if __name__ == "__main__":

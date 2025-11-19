@@ -10,15 +10,15 @@ import { ResidentDashboardComponent } from './features/resident/resident-dashboa
 
 
 export const appRoutes: Route[] = [
+	// Redirigir raíz al login administrativo (debe ir primero)
+	{ path: '', redirectTo: 'signin', pathMatch: 'full' },
+
 	// Ruta pública de registro para vecinos
 	{ 
 		path: 'signup', 
 		component: SignupComponent,
 		data: { title: 'Registro de Vecino' }
 	},
-
-	// Redirigir raíz al login administrativo
-	{ path: '', redirectTo: '/signin', pathMatch: 'full' },
 	
 	// Rutas de autenticación para administradores
 	{
