@@ -23,7 +23,9 @@ from src.database.models import User
 from src.database.repositories import (
     CommunityRepository,
     RegistrationRequestRepository,
-    TenantRepository
+    TenantRepository,
+    ResidentMembershipRepository,
+    AuthRepository
 )
 from src.database.utils import ValidationUtils, RutChile
 from src.services.file import FileService
@@ -90,6 +92,11 @@ async def create_registration_request(
 
     **Archivos opcionales:**
     - **additional_files**: Lista de documentos adicionales (contratos, etc.)
+
+    **Validaciones:**
+    - Verifica que el usuario no tenga ya una membresía en la comunidad específica
+    - Verifica que no exista una solicitud pendiente para ese email en esa comunidad
+    - Si el usuario ya es miembro, no podrá crear una nueva solicitud
 
     Los archivos se guardan localmente en: `uploads/evidence-{request_id}/`
     La solicitud quedará en estado PENDING hasta que un moderador la apruebe.
@@ -180,15 +187,34 @@ async def create_registration_request(
             detail="La comunidad no pertenece al tenant especificado"
         )
 
-    # Verificar que no exista una solicitud pendiente para este email
-    existing_request = await RegistrationRequestRepository.find_pending_request_by_email(
-        session, email
+    # ========================================
+    # VALIDACIONES DE REGISTROS PREVIOS
+    # ========================================
+
+    # Verificar si el usuario ya existe con ese email
+    existing_user = await AuthRepository.find_user_by_email(session, email)
+
+    if existing_user:
+        # Verificar si el usuario ya tiene una membresía en esta comunidad específica
+        existing_membership = await ResidentMembershipRepository.find_user_membership_in_community(
+            session, existing_user.id, community_id
+        )
+
+        if existing_membership:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya eres miembro de esta comunidad. No puedes crear una nueva solicitud de registro."
+            )
+
+    # Verificar que no exista una solicitud pendiente para este email en esta comunidad específica
+    existing_request = await RegistrationRequestRepository.find_pending_request_by_email_and_community(
+        session, email, community_id
     )
 
     if existing_request:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe una solicitud de registro pendiente para este email"
+            detail="Ya existe una solicitud de registro pendiente para este email en esta comunidad"
         )
 
     # Generar ID único para la solicitud (para crear carpeta de evidencia)
