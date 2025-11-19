@@ -92,6 +92,36 @@ class RegistrationRequestRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def find_pending_request_by_email_and_community(
+        session: AsyncSession,
+        email: str,
+        community_id: UUID
+    ) -> Optional[RegistrationRequest]:
+        """
+        Buscar solicitud pendiente por email y comunidad específica.
+
+        Args:
+            session: Sesión de base de datos
+            email: Email del solicitante
+            community_id: ID de la comunidad
+
+        Returns:
+            RegistrationRequest: Solicitud encontrada o None
+        """
+        result = await session.execute(
+            select(RegistrationRequest)
+            .options(selectinload(RegistrationRequest.attachments))
+            .where(
+                and_(
+                    RegistrationRequest.email == email.lower(),
+                    RegistrationRequest.community_id == community_id,
+                    RegistrationRequest.status == RegistrationStatus.PENDING
+                )
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def get_pending_requests_for_community(
         session: AsyncSession,
         community_id: UUID
