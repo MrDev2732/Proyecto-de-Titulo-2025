@@ -35,12 +35,12 @@ router = APIRouter(prefix="/projects", tags=["Proyectos Vecinales"])
     "/",
     response_model=ProjectResponse,
     summary="Proponer proyecto vecinal con archivos adjuntos",
-    description="Permite a un miembro de la junta de vecinos proponer un proyecto en su comunidad con archivos adjuntos opcionales",
+    description="Permite a cualquier usuario con membresía aprobada proponer un proyecto en su comunidad con archivos adjuntos opcionales",
     status_code=status.HTTP_201_CREATED,
     responses={
         201: {"description": "Proyecto creado exitosamente"},
-        403: {"model": ErrorResponse, "description": "Usuario no es miembro de la junta de vecinos"},
-        400: {"model": ErrorResponse, "description": "Usuario tiene múltiples membresías de junta"},
+        403: {"model": ErrorResponse, "description": "Usuario no tiene membresía aprobada en una comunidad"},
+        400: {"model": ErrorResponse, "description": "Usuario tiene múltiples membresías"},
         413: {"model": ErrorResponse, "description": "Archivo muy grande"},
         500: {"model": ErrorResponse, "description": "Error interno del servidor"}
     }
@@ -56,12 +56,12 @@ async def create_project(
     Proponer un proyecto en una comunidad.
 
     **Requisitos:**
-    - El usuario debe tener el rol MODERATOR a nivel de comunidad
-    - El rol MODERATOR representa a los miembros de la junta de vecinos
+    - El usuario debe tener una membresía aprobada en una comunidad
+    - Cualquier residente puede proponer proyectos en su comunidad
 
     **Restricciones:**
-    - Solo pueden proponer proyectos los usuarios con rol MODERATOR en una comunidad
-    - El MODERATOR puede proponer proyectos solo en su comunidad asignada
+    - Solo pueden proponer proyectos los usuarios con membresía aprobada
+    - El usuario puede proponer proyectos solo en su comunidad asignada
 
     **Estado inicial:**
     - El proyecto se crea con estado PENDING
@@ -77,21 +77,21 @@ async def create_project(
                 detail="Usuario no tiene un tenant asignado"
             )
 
-        # Verificar que el usuario tiene rol MODERATOR en una comunidad
+        # Verificar que el usuario tiene una membresía aprobada en una comunidad
         repo = ProjectRepository(session)
-        role_assignment = await repo.get_user_community_role(user_id=current_user.id)
+        membership = await repo.get_user_community_membership(user_id=current_user.id)
 
-        if not role_assignment:
+        if not membership:
             logger.warning(
-                f"⚠️ User {current_user.email} attempted to create project without MODERATOR role"
+                f"⚠️ User {current_user.email} attempted to create project without approved membership"
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Solo los moderadores de comunidad (miembros de la junta de vecinos) pueden proponer proyectos"
+                detail="Debes tener una membresía aprobada en una comunidad para proponer proyectos"
             )
 
-        # El community_id viene del scope_id de la asignación de rol
-        community_id = role_assignment.scope_id
+        # El community_id viene de la membresía del usuario
+        community_id = membership.community_id
 
         # Crear el proyecto
         project = Project(
@@ -105,7 +105,7 @@ async def create_project(
         project = await repo.create(project)
 
         logger.info(
-            f"✅ User {current_user.email} (role: MODERATOR, community: {community_id}) "
+            f"✅ User {current_user.email} (community: {community_id}) "
             f"created project {project.id}"
         )
 
@@ -321,6 +321,117 @@ async def list_all_projects(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno del servidor al obtener los proyectos"
+        )
+
+
+@router.get(
+    "/my-proposals",
+    response_model=ProjectListResponse,
+    summary="Listar mis propuestas de proyectos",
+    description="Permite a un usuario ver todas las propuestas de proyectos que ha creado",
+    responses={
+        200: {"description": "Lista de propuestas obtenida exitosamente"},
+        403: {"model": ErrorResponse, "description": "Usuario no tiene tenant asignado"},
+        500: {"model": ErrorResponse, "description": "Error interno del servidor"}
+    }
+)
+async def list_my_proposals(
+    page: int = Query(1, ge=1, description="Número de página"),
+    per_page: int = Query(10, ge=1, le=100, description="Elementos por página"),
+    status_filter: str = Query(None, description="Filtrar por estado (PENDING, IN_PROGRESS, COMPLETED, REJECTED)"),
+    current_user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_db_session)
+) -> ProjectListResponse:
+    """
+    Listar las propuestas de proyectos creadas por el usuario actual.
+
+    **Funcionalidad:**
+    - Muestra solo los proyectos propuestos por el usuario autenticado
+    - Soporta paginación y filtro por estado
+    - Ordenados por fecha de creación descendente (más recientes primero)
+
+    **Parámetros:**
+    - **page**: Número de página (por defecto 1)
+    - **per_page**: Elementos por página (por defecto 10, máximo 100)
+    - **status_filter**: Filtrar por estado específico (opcional)
+    """
+    try:
+        # Validar tenant
+        user_tenant_id = current_user.tenant_id
+        if not user_tenant_id:
+            logger.warning(f"⚠️ User {current_user.email} has no tenant_id")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Usuario no tiene un tenant asignado"
+            )
+
+        # Validar status_filter si se proporciona
+        if status_filter and status_filter not in [s.value for s in ProjectStatus]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Estado inválido. Valores permitidos: {', '.join([s.value for s in ProjectStatus])}"
+            )
+
+        # Obtener proyectos del usuario
+        repo = ProjectRepository(session)
+        projects_list, total, total_pages = await repo.list_by_user_paginated(
+            user_id=current_user.id,
+            tenant_id=user_tenant_id,
+            page=page,
+            per_page=per_page,
+            status_filter=status_filter
+        )
+
+        # Convertir a response con attachments
+        projects_responses = []
+        for project in projects_list:
+            attachment_responses = [
+                ProjectAttachmentResponse(
+                    id=str(attachment.id),
+                    original_filename=attachment.original_filename,
+                    mime_type=attachment.mime_type,
+                    file_url=f"/files/{attachment.storage_key}",
+                    created_at=attachment.created_at
+                )
+                for attachment in project.attachments
+            ]
+
+            projects_responses.append(
+                ProjectResponse(
+                    id=str(project.id),
+                    title=project.title,
+                    description=project.description,
+                    status=project.status,
+                    observations=project.observations,
+                    community_id=str(project.community_id),
+                    requesting_user_id=str(project.requesting_user_id),
+                    created_at=project.created_at,
+                    updated_at=project.updated_at,
+                    attachments=attachment_responses
+                )
+            )
+
+        filter_msg = f" with status={status_filter}" if status_filter else ""
+
+        logger.info(
+            f"✅ User {current_user.email} retrieved their {len(projects_responses)} proposals "
+            f"(page {page}/{total_pages}, total {total}){filter_msg}"
+        )
+
+        return ProjectListResponse(
+            projects=projects_responses,
+            total=total,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error listing user proposals: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor al obtener tus propuestas"
         )
 
 
