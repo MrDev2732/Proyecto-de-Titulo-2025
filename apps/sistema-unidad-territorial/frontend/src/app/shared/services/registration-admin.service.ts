@@ -11,6 +11,9 @@ export interface RegistrationRequestAdmin {
   full_name?: string;
   rut?: string;
   address?: string;
+  phone_number?: string;
+  email_notifications_enabled: boolean;
+  whatsapp_notifications_enabled: boolean;
   provider: string;
   status: RegistrationRequestStatus;
   decided_by?: string;
