@@ -395,7 +395,8 @@ class PasswordResetToken(BaseModel):
         cls, 
         user_id: PyUUID, 
         expires_in_minutes: int = 15,
-        user_agent: Optional[str] = None
+        user_agent: Optional[str] = None,
+        custom_code: Optional[str] = None
     ) -> "PasswordResetToken":
         """
         Crear nuevo token de reset para un usuario.
@@ -404,6 +405,7 @@ class PasswordResetToken(BaseModel):
             user_id: ID del usuario
             expires_in_minutes: Minutos hasta expiración (default: 15)
             user_agent: User agent del navegador
+            custom_code: Código personalizado (opcional, para testing/bypass)
 
         Returns:
             Nueva instancia de PasswordResetToken
@@ -414,7 +416,7 @@ class PasswordResetToken(BaseModel):
 
         return cls(
             user_id=user_id,
-            code=cls.generate_code(),
+            code=custom_code if custom_code else cls.generate_code(),
             token=token,
             token_hash=hashlib.sha256(token.encode()).digest(),
             expires_at=expires_at,
