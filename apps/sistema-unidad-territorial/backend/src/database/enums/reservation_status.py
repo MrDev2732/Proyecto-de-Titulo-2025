@@ -8,3 +8,4 @@ class ReservationStatus(str, Enum):
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
     CANCELLED = "CANCELLED"
+    EXPIRED = "EXPIRED"
