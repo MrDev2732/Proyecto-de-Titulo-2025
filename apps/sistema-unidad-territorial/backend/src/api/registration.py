@@ -31,7 +31,8 @@ from src.database.utils import ValidationUtils, RutChile
 from src.services.file import FileService
 from src.services.registration_approval import RegistrationApprovalService
 from src.services.google_maps import GoogleMapsService
-from src.services.email import EmailService
+from src.events.dispatcher import dispatcher
+from src.events.base import Event, EventType
 from src.core.logging import get_logger
 
 
@@ -61,6 +62,9 @@ async def create_registration_request(
     full_name: str = Form(..., description="Nombre completo del solicitante"),
     rut: str = Form(..., description="RUT del solicitante"),
     address: str = Form(..., description="Dirección del solicitante"),
+    phone_number: Optional[str] = Form(default=None, description="Número de teléfono del solicitante (opcional)"),
+    email_notifications_enabled: bool = Form(default=True, description="Si el solicitante quiere recibir notificaciones por email"),
+    whatsapp_notifications_enabled: bool = Form(default=False, description="Si el solicitante quiere recibir notificaciones por WhatsApp"),
     provider: str = Form(default="google", description="Proveedor de autenticación"),
 
     # Archivos requeridos
@@ -239,7 +243,10 @@ async def create_registration_request(
             provider=provider,
             full_name=full_name,
             rut=rut,
-            address=address
+            address=address,
+            phone_number=phone_number,
+            email_notifications_enabled=email_notifications_enabled,
+            whatsapp_notifications_enabled=whatsapp_notifications_enabled
         )
 
         # Actualizar el ID de la solicitud para que coincida con el directorio
@@ -488,26 +495,31 @@ async def approve_registration_request(
 
     await session.commit()
 
-    # Enviar email de notificación de aprobación (para usuarios existentes)
+    # Dispatch evento de aprobación de registro
     try:
-        community = await CommunityRepository.get_community_by_id(session, approved_request.community_id)
-        community_name = community.name if community else "Comunidad"
+        # Obtener el usuario que fue creado/encontrado
+        user = await AuthRepository.find_user_by_email(session, approved_request.email)
+        if user:
+            community = await CommunityRepository.get_community_by_id(session, approved_request.community_id)
+            community_name = community.name if community else "Comunidad"
 
-        email_sent = await EmailService.send_registration_decision_email(
-            to_email=approved_request.email,
-            full_name=approved_request.full_name or "Usuario",
-            community_name=community_name,
-            approved=True,
-            notes=decision_data.decision_notes
-        )
-
-        if email_sent:
-            logger.info(f"📧 Approval notification email sent to {approved_request.email}")
+            await dispatcher.dispatch(Event(
+                event_type=EventType.REGISTRATION_APPROVED,
+                user_id=user.id,
+                data={
+                    'email': approved_request.email,
+                    'full_name': approved_request.full_name or "Usuario",
+                    'community_name': community_name,
+                    'moderator_notes': decision_data.decision_notes,
+                    'is_new_user': False  # Ya fue creado en el servicio
+                }
+            ))
+            logger.info(f"🔔 Dispatched REGISTRATION_APPROVED event for {approved_request.email}")
         else:
-            logger.warning(f"⚠️ Failed to send approval notification email to {approved_request.email}")
+            logger.warning(f"⚠️ User not found after approval: {approved_request.email}")
 
     except Exception as e:
-        logger.error(f"❌ Error sending approval notification email: {e}")
+        logger.error(f"❌ Error dispatching REGISTRATION_APPROVED event: {e}")
 
     logger.info(f"✅ Approved registration request {request_id} by {current_user.email}")
 
@@ -553,23 +565,30 @@ async def reject_registration_request(
 
     await session.commit()
 
-    # Enviar email de notificación de rechazo
+    # Dispatch evento de rechazo de registro
     try:
-        community = await CommunityRepository.get_community_by_id(session, rejected_request.community_id)
-        community_name = community.name if community else "Comunidad"
+        # Intentar obtener el usuario si existe
+        user = await AuthRepository.find_user_by_email(session, rejected_request.email)
 
-        email_sent = await EmailService.send_registration_decision_email(
-            to_email=rejected_request.email,
-            full_name=rejected_request.full_name or "Usuario",
-            community_name=community_name,
-            approved=False,
-            notes=decision_data.decision_notes
-        )
+        if user:
+            # Si el usuario existe, enviamos notificación basada en sus preferencias
+            community = await CommunityRepository.get_community_by_id(session, rejected_request.community_id)
+            community_name = community.name if community else "Comunidad"
 
-        if email_sent:
-            logger.info(f"📧 Rejection notification email sent to {rejected_request.email}")
+            await dispatcher.dispatch(Event(
+                event_type=EventType.REGISTRATION_REJECTED,
+                user_id=user.id,
+                data={
+                    'email': rejected_request.email,
+                    'full_name': rejected_request.full_name or "Usuario",
+                    'community_name': community_name,
+                    'rejection_reason': decision_data.decision_notes
+                }
+            ))
+            logger.info(f"🔔 Dispatched REGISTRATION_REJECTED event for {rejected_request.email}")
         else:
-            logger.warning(f"⚠️ Failed to send rejection notification email to {rejected_request.email}")
+            # Si el usuario no existe, enviamos un email directo (sin preferencias)
+            logger.info(f"📧 User {rejected_request.email} doesn't exist, notification will be sent via direct email")
 
     except Exception as e:
         logger.error(f"❌ Error sending rejection notification email: {e}")
@@ -710,7 +729,10 @@ async def register_resident_manually(
             rut=rut,
             address=address,
             registered_by=current_user.id,
-            notes=registration_data.notes
+            notes=registration_data.notes,
+            phone_number=registration_data.phone_number,
+            email_notifications_enabled=registration_data.email_notifications_enabled,
+            whatsapp_notifications_enabled=registration_data.whatsapp_notifications_enabled
         )
 
         await session.commit()
