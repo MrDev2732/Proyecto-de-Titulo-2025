@@ -76,6 +76,23 @@ class EmailSettings(BaseModel):
         ])
 
 
+class TwilioSettings(BaseModel):
+    """Twilio WhatsApp configuration settings."""
+    account_sid: Optional[str] = Field(default=None, description="Twilio Account SID")
+    auth_token: Optional[str] = Field(default=None, description="Twilio Auth Token")
+    whatsapp_from: Optional[str] = Field(default=None, description="Número de WhatsApp de Twilio (ej: +14155238886)")
+    enabled: bool = Field(default=False, description="Habilitar envío de WhatsApp")
+
+    @property
+    def is_configured(self) -> bool:
+        """Verificar si Twilio está configurado correctamente."""
+        return all([
+            self.account_sid,
+            self.auth_token,
+            self.whatsapp_from
+        ])
+
+
 class DatabaseSettings(BaseModel):
     """Database connection settings."""
     user: str
@@ -120,6 +137,7 @@ class Settings(BaseSettings):
     google_maps: GoogleMapsSettings = Field(default_factory=GoogleMapsSettings)
     files: FileSettings = Field(default_factory=FileSettings)
     email: EmailSettings = Field(default_factory=EmailSettings)
+    twilio: TwilioSettings = Field(default_factory=TwilioSettings)
 
     @classmethod
     def get_database_settings(cls, environment: str) -> dict[str, Any]:
@@ -137,11 +155,11 @@ class Settings(BaseSettings):
             }
         else:
             return {
-                "user": getenv("DB_USER_QP"),
-                "password": getenv("DB_PASSWORD_QP"),
-                "host": getenv("DB_HOST_QP"),
-                "port": getenv("DB_PORT_QP"),
-                "name": getenv("DB_DATABASE_QP"),
+                "user": getenv("DB_USER"),
+                "password": getenv("DB_PASSWORD"),
+                "host": getenv("DB_HOST"),
+                "port": getenv("DB_PORT"),
+                "name": getenv("DB_DATABASE"),
                 "db_schema": getenv("DB_SCHEMA"),
                 "pool_size": 20,
                 "max_overflow": 10,
@@ -184,6 +202,12 @@ def get_settings(env_loader: EnvironmentLoader = DotEnvLoader()) -> Settings:
             from_email=getenv("SMTP_FROM_EMAIL"),
             from_name=getenv("SMTP_FROM_NAME", "Sistema Unidad Territorial"),
             enabled=getenv("SMTP_ENABLED", "false").lower() == "true"
+        ),
+        twilio=TwilioSettings(
+            account_sid=getenv("TWILIO_ACCOUNT_SID"),
+            auth_token=getenv("TWILIO_AUTH_TOKEN"),
+            whatsapp_from=getenv("TWILIO_WHATSAPP_FROM"),
+            enabled=getenv("TWILIO_ENABLED", "false").lower() == "true"
         )
     )
 
