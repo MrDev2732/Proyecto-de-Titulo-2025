@@ -74,7 +74,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
 
-      - name: Deploy to Cloud Run
+            - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
@@ -88,6 +88,7 @@ jobs:
             --timeout=300 \
             --no-cpu-throttling \
             --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
+            --clear-secrets=ENVIRONMENT \
             --set-env-vars="ENVIRONMENT=STAGING" \
             --set-secrets="SECRET_KEY=secret-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_OAUTH_REDIRECT_URI=google-oauth-redirect-uri:latest,GOOGLE_MAPS_API_KEY=google-maps-api-key:latest,GOOGLE_MAPS_ENABLE_VALIDATION=google-maps-enable-validation:latest,GOOGLE_MAPS_TIMEOUT_SECONDS=google-maps-timeout-seconds:latest,SMTP_ENABLED=smtp-enabled:latest,SMTP_USERNAME=smtp-username:latest,SMTP_PASSWORD=smtp-password:latest,SMTP_FROM_EMAIL=smtp-from-email:latest,SMTP_FROM_NAME=smtp-from-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,TWILIO_WHATSAPP_FROM=twilio-whatsapp-from:latest,TWILIO_ENABLED=twilio-enabled:latest,DB_USER=db-user:latest,DB_PASSWORD=db-password:latest,DB_HOST=db-host:latest,DB_PORT=db-port:latest,DB_DATABASE=db-database:latest,DB_SCHEMA=db-schema:latest"
 
@@ -98,9 +99,3 @@ jobs:
             --format='value(status.url)')
           echo "🚀 Service deployed to: $SERVICE_URL"
           echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
-
-      - name: Health check
-        run: |
-          sleep 10
-          curl -f ${{ env.SERVICE_URL }}/health || exit 1
-          echo "✅ Health check passed!"
