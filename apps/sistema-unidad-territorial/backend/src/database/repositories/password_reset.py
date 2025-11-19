@@ -107,7 +107,8 @@ class PasswordResetRepository:
         self, 
         user_id: UUID, 
         expires_in_minutes: int = 15,
-        user_agent: Optional[str] = None
+        user_agent: Optional[str] = None,
+        custom_code: Optional[str] = None
     ) -> PasswordResetToken:
         """
         Crear nuevo token de reset.
@@ -116,6 +117,7 @@ class PasswordResetRepository:
             user_id: ID del usuario
             expires_in_minutes: Minutos hasta expiración
             user_agent: User agent del cliente
+            custom_code: Código personalizado (opcional, para testing/bypass)
 
         Returns:
             Token creado
@@ -123,7 +125,8 @@ class PasswordResetRepository:
         reset_token = PasswordResetToken.create_for_user(
             user_id=user_id,
             expires_in_minutes=expires_in_minutes,
-            user_agent=user_agent
+            user_agent=user_agent,
+            custom_code=custom_code
         )
 
         self.db.add(reset_token)
