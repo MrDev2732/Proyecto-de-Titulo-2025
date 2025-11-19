@@ -75,6 +75,11 @@ export const appRoutes: Route[] = [
 				path: 'reservations/new/:id',
 				loadComponent: () => import('./features/reservations/reservations-create.component').then(m => m.ReservationsCreateComponent),
 				data: { title: 'Nueva Reserva' }
+			},
+			{
+				path: 'projects',
+				loadComponent: () => import('./features/resident/user-projects.component').then(m => m.UserProjectsComponent),
+				data: { title: 'Mis Proyectos' }
 			}
 		]
 	},
