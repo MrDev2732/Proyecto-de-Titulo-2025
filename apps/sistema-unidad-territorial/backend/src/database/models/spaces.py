@@ -133,7 +133,8 @@ class Reservation(SoftDeleteBaseModel):
         CheckConstraint(
             f"status IN ('{ReservationStatus.PENDING.value}', "
             f"'{ReservationStatus.CONFIRMED.value}', "
-            f"'{ReservationStatus.CANCELLED.value}')",
+            f"'{ReservationStatus.CANCELLED.value}', "
+            f"'{ReservationStatus.EXPIRED.value}')",
             name='ck_reservation_status'
         ),
         # Indexes for optimizing queries
