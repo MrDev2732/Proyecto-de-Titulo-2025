@@ -1,0 +1,406 @@
+<div class="projects-management">
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h2 class="text-2xl font-bold text-gray-900">Gestión de Proyectos</h2>
+      <p class="text-sm text-gray-600 mt-1">Administra los proyectos vecinales propuestos</p>
+    </div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="mb-6 bg-white rounded-lg border border-gray-200 p-4">
+    <div class="flex flex-wrap gap-2">
+      <button
+        (click)="onStatusFilterChange('')"
+        [class]="'px-4 py-2 text-sm font-medium rounded-lg transition-colors ' + 
+                 (statusFilter() === '' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')"
+      >
+        Todos ({{ total() }})
+      </button>
+      <button
+        (click)="onStatusFilterChange('PENDING')"
+        [class]="'px-4 py-2 text-sm font-medium rounded-lg transition-colors ' + 
+                 (statusFilter() === 'PENDING' ? 'bg-yellow-500 text-white' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200')"
+      >
+        Pendientes
+      </button>
+      <button
+        (click)="onStatusFilterChange('IN_PROGRESS')"
+        [class]="'px-4 py-2 text-sm font-medium rounded-lg transition-colors ' + 
+                 (statusFilter() === 'IN_PROGRESS' ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-800 hover:bg-blue-200')"
+      >
+        En Progreso
+      </button>
+      <button
+        (click)="onStatusFilterChange('COMPLETED')"
+        [class]="'px-4 py-2 text-sm font-medium rounded-lg transition-colors ' + 
+                 (statusFilter() === 'COMPLETED' ? 'bg-green-500 text-white' : 'bg-green-100 text-green-800 hover:bg-green-200')"
+      >
+        Completados
+      </button>
+      <button
+        (click)="onStatusFilterChange('REJECTED')"
+        [class]="'px-4 py-2 text-sm font-medium rounded-lg transition-colors ' + 
+                 (statusFilter() === 'REJECTED' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-800 hover:bg-red-200')"
+      >
+        Rechazados
+      </button>
+    </div>
+  </div>
+
+  <!-- Success Message -->
+  @if (successMessage(); as message) {
+    <div class="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+      <div class="flex">
+        <svg class="h-5 w-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <div class="ml-3">
+          <p class="text-sm text-green-800">{{ message }}</p>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Error Message -->
+  @if (error(); as errorMsg) {
+    <div class="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+      <div class="flex">
+        <svg class="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <div class="ml-3">
+          <p class="text-sm text-red-800">{{ errorMsg }}</p>
+        </div>
+        <button 
+          (click)="error.set(null)"
+          class="ml-auto -mx-1.5 -my-1.5 bg-red-50 text-red-500 rounded-lg focus:ring-2 focus:ring-red-600 p-1.5 hover:bg-red-100 inline-flex h-8 w-8"
+        >
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- Loading State -->
+  @if (loading()) {
+    <div class="flex items-center justify-center py-12">
+      <div class="text-center">
+        <svg class="animate-spin h-10 w-10 text-gray-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="text-gray-600">Cargando proyectos...</p>
+      </div>
+    </div>
+  }
+
+  <!-- Projects List -->
+  @if (!loading() && projects().length === 0) {
+    <div class="text-center py-12 bg-white rounded-lg border border-gray-200">
+      <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+      </svg>
+      <p class="text-gray-600 mb-4">No hay proyectos registrados</p>
+    </div>
+  }
+
+  @if (!loading() && projects().length > 0) {
+    <div class="space-y-4">
+      @for (project of projects(); track project.id) {
+        <div class="bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-all shadow-sm">
+          <div class="p-6">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-2">
+                  <h3 class="text-lg font-semibold text-gray-900">{{ project.title }}</h3>
+                  <span [class]="'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + getStatusBadgeClass(project.status)">
+                    {{ getStatusBadgeText(project.status) }}
+                  </span>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">{{ truncateText(project.description, 200) }}</p>
+              </div>
+            </div>
+
+            <!-- Attachments -->
+            @if (project.attachments && project.attachments.length > 0) {
+              <div class="mb-3 flex items-center text-sm text-gray-600">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                </svg>
+                {{ project.attachments.length }} archivo(s) adjunto(s)
+              </div>
+            }
+
+            <!-- Observations -->
+            @if (project.observations) {
+              <div class="mb-3 p-3 bg-gray-50 rounded-lg">
+                <p class="text-sm font-medium text-gray-700 mb-1">Observaciones:</p>
+                <p class="text-sm text-gray-600">{{ project.observations }}</p>
+              </div>
+            }
+
+            <div class="flex items-center justify-between">
+              <div class="text-xs text-gray-500">
+                Creado el {{ formatDate(project.created_at) }}
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <button
+                  (click)="openDetailModal(project)"
+                  class="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Ver Detalles
+                </button>
+
+                @if (project.status === 'PENDING') {
+                  <button
+                    (click)="openApproveModal(project)"
+                    class="px-3 py-1.5 text-sm text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+                  >
+                    Aprobar
+                  </button>
+                  <button
+                    (click)="openRejectModal(project)"
+                    class="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                  >
+                    Rechazar
+                  </button>
+                }
+
+                @if (project.status === 'IN_PROGRESS') {
+                  <button
+                    (click)="completeProject(project)"
+                    [disabled]="processing()"
+                    class="px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Marcar Completado
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Pagination -->
+    @if (totalPages() > 1) {
+      <div class="mt-6 flex justify-center items-center space-x-2">
+        <button
+          (click)="goToPage(currentPage() - 1)"
+          [disabled]="currentPage() === 1"
+          class="px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Anterior
+        </button>
+
+        <span class="text-sm text-gray-700">
+          Página {{ currentPage() }} de {{ totalPages() }}
+        </span>
+
+        <button
+          (click)="goToPage(currentPage() + 1)"
+          [disabled]="currentPage() === totalPages()"
+          class="px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Siguiente
+        </button>
+      </div>
+    }
+  }
+</div>
+
+<!-- Detail Modal -->
+@if (showDetailModal() && selectedProject(); as project) {
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" (click)="closeModals()">
+    <div class="relative top-20 mx-auto p-6 border w-11/12 max-w-3xl shadow-lg rounded-lg bg-white" (click)="$event.stopPropagation()">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xl font-semibold text-gray-900">Detalle del Proyecto</h3>
+        <button (click)="closeModals()" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Título</label>
+          <p class="text-gray-900">{{ project.title }}</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+          <span [class]="'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + getStatusBadgeClass(project.status)">
+            {{ getStatusBadgeText(project.status) }}
+          </span>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+          <p class="text-gray-700 whitespace-pre-wrap">{{ project.description }}</p>
+        </div>
+
+        @if (project.observations) {
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+            <p class="text-gray-700">{{ project.observations }}</p>
+          </div>
+        }
+
+        @if (project.attachments && project.attachments.length > 0) {
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Archivos Adjuntos</label>
+            <div class="space-y-2">
+              @for (attachment of project.attachments; track attachment.id) {
+                <a
+                  [href]="attachment.file_url"
+                  target="_blank"
+                  class="flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg class="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                  </svg>
+                  <span class="text-sm text-gray-700">{{ attachment.original_filename }}</span>
+                </a>
+              }
+            </div>
+          </div>
+        }
+
+        <div class="text-xs text-gray-500">
+          Creado el {{ formatDate(project.created_at) }}
+        </div>
+      </div>
+
+      <div class="flex justify-end mt-6">
+        <button
+          (click)="closeModals()"
+          class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+        >
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Approve Modal -->
+@if (showApproveModal() && selectedProject(); as project) {
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" (click)="closeModals()">
+    <div class="relative top-20 mx-auto p-6 border w-11/12 max-w-md shadow-lg rounded-lg bg-white" (click)="$event.stopPropagation()">
+      <div class="text-center">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+          <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">¿Aprobar proyecto?</h3>
+        <p class="text-sm text-gray-600 mb-4">
+          ¿Deseas aprobar el proyecto "<strong>{{ project.title }}</strong>"?
+        </p>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1 text-left">Observaciones (opcional)</label>
+          <textarea
+            [(ngModel)]="observations"
+            rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            placeholder="Agrega comentarios u observaciones..."
+          ></textarea>
+        </div>
+
+        <div class="flex justify-center space-x-3">
+          <button
+            type="button"
+            (click)="closeModals()"
+            [disabled]="processing()"
+            class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            (click)="approveProject()"
+            [disabled]="processing()"
+            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+          >
+            @if (processing()) {
+              <span class="flex items-center">
+                <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Aprobando...
+              </span>
+            } @else {
+              Aprobar
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Reject Modal -->
+@if (showRejectModal() && selectedProject(); as project) {
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" (click)="closeModals()">
+    <div class="relative top-20 mx-auto p-6 border w-11/12 max-w-md shadow-lg rounded-lg bg-white" (click)="$event.stopPropagation()">
+      <div class="text-center">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+          <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">¿Rechazar proyecto?</h3>
+        <p class="text-sm text-gray-600 mb-4">
+          ¿Estás seguro de que deseas rechazar el proyecto "<strong>{{ project.title }}</strong>"?
+        </p>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1 text-left">Razón del rechazo *</label>
+          <textarea
+            [(ngModel)]="observations"
+            rows="3"
+            required
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+            placeholder="Explica por qué se rechaza el proyecto..."
+          ></textarea>
+        </div>
+
+        <div class="flex justify-center space-x-3">
+          <button
+            type="button"
+            (click)="closeModals()"
+            [disabled]="processing()"
+            class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            (click)="rejectProject()"
+            [disabled]="processing()"
+            class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+          >
+            @if (processing()) {
+              <span class="flex items-center">
+                <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Rechazando...
+              </span>
+            } @else {
+              Rechazar
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
