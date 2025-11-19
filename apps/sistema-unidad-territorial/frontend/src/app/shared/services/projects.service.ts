@@ -70,6 +70,25 @@ export class ProjectsService {
   }
 
   /**
+   * Listar mis propuestas de proyectos
+   */
+  listMyProposals(filters: ProjectFilters = {}): Observable<ProjectListResponse> {
+    let params = new HttpParams();
+
+    if (filters.page) {
+      params = params.set('page', filters.page.toString());
+    }
+    if (filters.per_page) {
+      params = params.set('per_page', filters.per_page.toString());
+    }
+    if (filters.status_filter) {
+      params = params.set('status_filter', filters.status_filter);
+    }
+
+    return this.http.get<ProjectListResponse>(`${this.baseUrl}/my-proposals`, { params });
+  }
+
+  /**
    * Obtener detalle de un proyecto
    */
   getProject(projectId: string): Observable<Project> {
