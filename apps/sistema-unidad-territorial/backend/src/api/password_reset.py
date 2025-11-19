@@ -1,8 +1,9 @@
 """
 Endpoints para recuperación de contraseñas.
 """
-
 from typing import Dict, Any
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from src.schemas import (
     PasswordResetConfirmationResponse,
     ErrorResponse
 )
+
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/password-reset", tags=["Password Reset"])
@@ -63,7 +65,6 @@ async def request_password_reset(
     except Exception as e:
         logger.error(f"Error in password reset request: {e}")
         # Por seguridad, siempre retornar éxito
-        from uuid import UUID
         fake_token_id = UUID('00000000-0000-0000-0000-000000000000')
         return PasswordResetResponse(
             message="Si el email existe en nuestro sistema, recibirás un código de recuperación.",
@@ -95,7 +96,6 @@ async def validate_reset_code(
 
     Valida que el código sea correcto y no haya expirado.
     """
-
     password_service = PasswordResetService(session)
 
     try:

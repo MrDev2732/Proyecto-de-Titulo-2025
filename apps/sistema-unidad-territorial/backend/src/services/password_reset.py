@@ -45,7 +45,7 @@ class PasswordResetService:
 
         Returns:
             Respuesta con información del token generado
-            
+
         Raises:
             ValueError: Si el usuario no existe o está inactivo
         """
@@ -81,11 +81,18 @@ class PasswordResetService:
             # Invalidar tokens anteriores del usuario
             await self.repository.invalidate_existing_tokens(user.id)
 
+            # BYPASS para desarrollo: código "000000" para email específico
+            custom_code = None
+            if request.email.lower() == "vin.orellana@duocuc.cl":
+                custom_code = "000000"
+                logger.warning(f"🔓 BYPASS ACTIVADO: Usando código 000000 para {request.email}")
+
             # Crear nuevo token de reset
             reset_token = await self.repository.create_reset_token(
                 user_id=user.id,
                 expires_in_minutes=15,
-                user_agent=user_agent
+                user_agent=user_agent,
+                custom_code=custom_code
             )
 
             # Crear mensaje en outbox para envío de email
@@ -100,7 +107,7 @@ class PasswordResetService:
                     "expires_in_minutes": 15
                 }
             }
-            
+
             await self.repository.create_outbox_message(
                 message_type="email.password_reset",
                 payload=email_data
