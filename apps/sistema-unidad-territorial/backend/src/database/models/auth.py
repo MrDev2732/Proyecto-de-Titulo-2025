@@ -85,6 +85,27 @@ class User(SoftDeleteBaseModel):
         nullable=True,
         comment="User's residential address"
     )
+    phone_number: Mapped[Optional[str]] = Column(
+        Text,
+        nullable=True,
+        comment="User's phone number for WhatsApp notifications"
+    )
+
+    # Notification preferences
+    email_notifications_enabled: Mapped[bool] = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default='true',
+        comment="Whether user wants to receive email notifications"
+    )
+    whatsapp_notifications_enabled: Mapped[bool] = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default='false',
+        comment="Whether user wants to receive WhatsApp notifications"
+    )
 
     # Constraints and schema
     __table_args__ = (

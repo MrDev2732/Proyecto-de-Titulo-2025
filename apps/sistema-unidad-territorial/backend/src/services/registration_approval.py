@@ -20,7 +20,8 @@ from src.database.repositories import (
 from src.database.enums import MembershipStatus, UserStatus
 from src.core.security import generate_secure_password, get_password_hash
 from src.core.logging import get_logger
-from src.services.email import EmailService
+from src.events.dispatcher import dispatcher
+from src.events.base import Event, EventType
 
 
 logger = get_logger(__name__)
@@ -124,36 +125,41 @@ class RegistrationApprovalService:
                 status=UserStatus.ACTIVE,
                 full_name=registration_request.full_name,
                 rut=registration_request.rut,
-                address=registration_request.address
+                address=registration_request.address,
+                phone_number=registration_request.phone_number,
+                email_notifications_enabled=registration_request.email_notifications_enabled,
+                whatsapp_notifications_enabled=registration_request.whatsapp_notifications_enabled
             )
 
             logger.info(f"✅ Created new user {email} with complete profile data")
             logger.info(f"   👤 Name: {registration_request.full_name}")
             logger.info(f"   🆔 RUT: {registration_request.rut}")
             logger.info(f"   🏠 Address: {registration_request.address}")
+            logger.info(f"   📱 Phone: {registration_request.phone_number}")
+            logger.info(f"   📧 Email notifications: {registration_request.email_notifications_enabled}")
+            logger.info(f"   💬 WhatsApp notifications: {registration_request.whatsapp_notifications_enabled}")
+            logger.info(f"   🔑 Temporary password: {random_password}")
 
-            # Enviar email de bienvenida con contraseña temporal
+            # Dispatch evento de aprobación de registro
             try:
                 community = await session.get(Community, registration_request.community_id)
                 community_name = community.name if community else "Comunidad"
 
-                email_sent = await EmailService.send_welcome_email(
-                    to_email=email,
-                    full_name=registration_request.full_name,
-                    temporary_password=random_password,
-                    community_name=community_name
-                )
-
-                if email_sent:
-                    logger.info(f"📧 Welcome email sent to {email}")
-                else:
-                    logger.warning(f"⚠️ Failed to send welcome email to {email}")
+                await dispatcher.dispatch(Event(
+                    event_type=EventType.REGISTRATION_APPROVED,
+                    user_id=user.id,
+                    data={
+                        'email': email,
+                        'full_name': registration_request.full_name,
+                        'temporary_password': random_password,
+                        'community_name': community_name,
+                        'is_new_user': True
+                    }
+                ))
+                logger.info(f"🔔 Dispatched REGISTRATION_APPROVED event for {email}")
 
             except Exception as e:
-                logger.error(f"❌ Error sending welcome email to {email}: {e}")
-
-            # Para desarrollo, también loggeamos la contraseña
-            logger.info(f"🔑 Temporary password for {email}: {random_password}")
+                logger.error(f"❌ Error dispatching REGISTRATION_APPROVED event for {email}: {e}")
         else:
             logger.info(f"✅ Found existing user {email}")
 
@@ -171,6 +177,19 @@ class RegistrationApprovalService:
                 user.address = registration_request.address
                 needs_update = True
 
+            if not user.phone_number and registration_request.phone_number:
+                user.phone_number = registration_request.phone_number
+                needs_update = True
+
+            # Actualizar preferencias de notificaciones si fueron especificadas
+            if hasattr(registration_request, 'email_notifications_enabled'):
+                user.email_notifications_enabled = registration_request.email_notifications_enabled
+                needs_update = True
+
+            if hasattr(registration_request, 'whatsapp_notifications_enabled'):
+                user.whatsapp_notifications_enabled = registration_request.whatsapp_notifications_enabled
+                needs_update = True
+
             if needs_update:
                 await session.flush()
                 logger.info(f"🔄 Updated existing user {email} with missing profile data")
@@ -186,7 +205,10 @@ class RegistrationApprovalService:
         rut: str,
         address: str,
         registered_by: UUID,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        phone_number: Optional[str] = None,
+        email_notifications_enabled: bool = True,
+        whatsapp_notifications_enabled: bool = False
     ) -> tuple[User, UUID, Optional[str]]:
         """
         Registrar manualmente a un vecino sin pasar por el proceso de solicitud.
@@ -200,6 +222,9 @@ class RegistrationApprovalService:
             address: Dirección del vecino
             registered_by: ID del moderador que registra
             notes: Notas opcionales del moderador
+            phone_number: Número de teléfono del vecino (opcional)
+            email_notifications_enabled: Preferencia de notificaciones por email
+            whatsapp_notifications_enabled: Preferencia de notificaciones por WhatsApp
 
         Returns:
             tuple: (Usuario creado/encontrado, ID de membresía, contraseña temporal si es nuevo usuario)
@@ -221,33 +246,39 @@ class RegistrationApprovalService:
                 status=UserStatus.ACTIVE,
                 full_name=full_name,
                 rut=rut,
-                address=address
+                address=address,
+                phone_number=phone_number,
+                email_notifications_enabled=email_notifications_enabled,
+                whatsapp_notifications_enabled=whatsapp_notifications_enabled
             )
             logger.info(f"✅ Created new user {email} via manual registration")
             logger.info(f"   👤 Name: {full_name}")
             logger.info(f"   🆔 RUT: {rut}")
             logger.info(f"   🏠 Address: {address}")
+            logger.info(f"   📱 Phone: {phone_number}")
             logger.info(f"   🔑 Temporary password: {temporary_password}")
 
-            # Enviar email de bienvenida con contraseña temporal
+            # Dispatch evento de registro manual
             try:
                 community = await session.get(Community, community_id)
                 community_name = community.name if community else "Comunidad"
 
-                email_sent = await EmailService.send_welcome_email(
-                    to_email=email,
-                    full_name=full_name,
-                    temporary_password=temporary_password,
-                    community_name=community_name
-                )
-
-                if email_sent:
-                    logger.info(f"📧 Welcome email sent to {email} for manual registration")
-                else:
-                    logger.warning(f"⚠️ Failed to send welcome email to {email} for manual registration")
+                await dispatcher.dispatch(Event(
+                    event_type=EventType.USER_REGISTERED_MANUALLY,
+                    user_id=user.id,
+                    data={
+                        'email': email,
+                        'full_name': full_name,
+                        'temporary_password': temporary_password,
+                        'community_name': community_name,
+                        'registered_by': str(registered_by),
+                        'notes': notes
+                    }
+                ))
+                logger.info(f"🔔 Dispatched USER_REGISTERED_MANUALLY event for {email}")
 
             except Exception as e:
-                logger.error(f"❌ Error sending welcome email for manual registration to {email}: {e}")
+                logger.error(f"❌ Error dispatching USER_REGISTERED_MANUALLY event for {email}: {e}")
         else:
             logger.info(f"✅ Found existing user {email} for manual registration")
 

@@ -54,6 +54,9 @@ export class SignupComponent implements OnInit {
     full_name: ['', [Validators.required, Validators.minLength(2)]],
     rut: ['', [Validators.required]],
     address: ['', [Validators.required, Validators.minLength(10)]],
+    phone_number: [''], // Opcional
+    email_notifications_enabled: [true],
+    whatsapp_notifications_enabled: [false],
     provider: ['google']
   });
 
@@ -287,7 +290,8 @@ export class SignupComponent implements OnInit {
       email: 'Email',
       full_name: 'Nombre completo',
       rut: 'RUT',
-      address: 'Dirección'
+      address: 'Dirección',
+      phone_number: 'Teléfono'
     };
     return labels[fieldName] || fieldName;
   }

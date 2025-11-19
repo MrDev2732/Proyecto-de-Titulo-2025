@@ -257,6 +257,33 @@ class EmailService:
             )
 
     @staticmethod
+    async def send_notification_email(
+        to_email: str,
+        subject: str,
+        body: str
+    ) -> bool:
+        """
+        Enviar un email de notificación genérico.
+
+        Este método es usado por el sistema de observadores para enviar notificaciones
+        basadas en eventos del sistema.
+
+        Args:
+            to_email: Email del destinatario
+            subject: Asunto del email
+            body: Cuerpo del email (puede contener HTML)
+
+        Returns:
+            bool: True si se envió correctamente
+        """
+        return await EmailService.send_email(
+            to_email=to_email,
+            subject=subject,
+            body=body,
+            is_html=True
+        )
+
+    @staticmethod
     async def test_email_configuration() -> bool:
         """
         Probar la configuración de email enviando un correo de prueba.

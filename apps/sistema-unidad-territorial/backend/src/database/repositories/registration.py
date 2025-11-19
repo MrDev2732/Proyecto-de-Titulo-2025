@@ -33,7 +33,10 @@ class RegistrationRequestRepository:
         provider: RegistrationProvider,
         full_name: str,
         rut: str,
-        address: str
+        address: str,
+        phone_number: Optional[str] = None,
+        email_notifications_enabled: bool = True,
+        whatsapp_notifications_enabled: bool = False
     ) -> RegistrationRequest:
         """
         Crear una nueva solicitud de registro.
@@ -47,6 +50,9 @@ class RegistrationRequestRepository:
             full_name: Nombre completo
             rut: RUT
             address: Dirección
+            phone_number: Número de teléfono (opcional)
+            email_notifications_enabled: Si quiere recibir notificaciones por email
+            whatsapp_notifications_enabled: Si quiere recibir notificaciones por WhatsApp
 
         Returns:
             RegistrationRequest: Solicitud creada
@@ -58,7 +64,10 @@ class RegistrationRequestRepository:
             provider=provider,
             full_name=full_name,
             rut=rut,
-            address=address
+            address=address,
+            phone_number=phone_number,
+            email_notifications_enabled=email_notifications_enabled,
+            whatsapp_notifications_enabled=whatsapp_notifications_enabled
         )
         session.add(request)
         await session.flush()

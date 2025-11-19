@@ -227,6 +227,25 @@ class RegistrationRequest(BaseModel):
         nullable=True,
         comment="Applicant address"
     )
+    phone_number: Mapped[Optional[str]] = Column(
+        Text,
+        nullable=True,
+        comment="Applicant phone number for WhatsApp notifications"
+    )
+    email_notifications_enabled: Mapped[bool] = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default='true',
+        comment="Whether applicant wants email notifications"
+    )
+    whatsapp_notifications_enabled: Mapped[bool] = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default='false',
+        comment="Whether applicant wants WhatsApp notifications"
+    )
     provider: Mapped[RegistrationProvider] = Column(
         Enum(RegistrationProvider, name='registration_provider_enum', values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,

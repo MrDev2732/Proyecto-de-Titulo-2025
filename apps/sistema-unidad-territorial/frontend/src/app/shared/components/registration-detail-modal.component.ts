@@ -115,11 +115,16 @@ import {
                         </p>
                       </div>
 
-                      <!-- Dirección -->
-                      <div class="bg-white/50 rounded-xl p-4 border border-municipal-light/30 md:col-span-2">
-                        <label class="block text-sm font-bold text-municipal-dark mb-2">Dirección</label>
+                      <!-- Teléfono -->
+                      <div class="bg-white/50 rounded-xl p-4 border border-municipal-light/30">
+                        <label class="block text-sm font-bold text-municipal-dark mb-2 flex items-center">
+                          <svg class="w-4 h-4 mr-1 text-municipal-green" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+                          </svg>
+                          Teléfono
+                        </label>
                         <p class="text-lg font-medium text-municipal-text">
-                          {{ request()!.address || 'No especificada' }}
+                          {{ request()!.phone_number || 'No especificado' }}
                         </p>
                       </div>
 
@@ -138,6 +143,71 @@ import {
                           <span class="text-lg font-medium text-municipal-text capitalize">
                             {{ request()!.provider }}
                           </span>
+                        </div>
+                      </div>
+
+                      <!-- Dirección (full width) -->
+                      <div class="bg-white/50 rounded-xl p-4 border border-municipal-light/30 md:col-span-2 lg:col-span-3">
+                        <label class="block text-sm font-bold text-municipal-dark mb-2">Dirección</label>
+                        <p class="text-lg font-medium text-municipal-text">
+                          {{ request()!.address || 'No especificada' }}
+                        </p>
+                      </div>
+
+                      <!-- Preferencias de Notificaciones -->
+                      <div class="bg-gradient-to-br from-municipal-green/5 to-municipal-light/10 rounded-xl p-4 border-2 border-municipal-green/20 md:col-span-2 lg:col-span-3">
+                        <label class="block text-sm font-bold text-municipal-dark mb-3 flex items-center">
+                          <svg class="w-4 h-4 mr-2 text-municipal-green" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                          </svg>
+                          Preferencias de Notificaciones
+                        </label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <!-- Email -->
+                          <div class="flex items-center space-x-3 bg-white/70 rounded-lg p-3 border border-municipal-light/30">
+                            @if (request()!.email_notifications_enabled) {
+                              <div class="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                                </svg>
+                              </div>
+                            } @else {
+                              <div class="flex-shrink-0 w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                </svg>
+                              </div>
+                            }
+                            <div class="flex-1">
+                              <p class="text-sm font-medium text-municipal-dark">Email</p>
+                              <p class="text-xs text-municipal-muted">
+                                {{ request()!.email_notifications_enabled ? 'Activado' : 'Desactivado' }}
+                              </p>
+                            </div>
+                          </div>
+
+                          <!-- WhatsApp -->
+                          <div class="flex items-center space-x-3 bg-white/70 rounded-lg p-3 border border-municipal-light/30">
+                            @if (request()!.whatsapp_notifications_enabled) {
+                              <div class="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                                </svg>
+                              </div>
+                            } @else {
+                              <div class="flex-shrink-0 w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                </svg>
+                              </div>
+                            }
+                            <div class="flex-1">
+                              <p class="text-sm font-medium text-municipal-dark">WhatsApp</p>
+                              <p class="text-xs text-municipal-muted">
+                                {{ request()!.whatsapp_notifications_enabled ? 'Activado' : 'Desactivado' }}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

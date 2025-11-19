@@ -42,6 +42,9 @@ class RegistrationRequestCreateData(BaseModel):
     full_name: str = Field(..., description="Nombre completo del solicitante")
     rut: str = Field(..., description="RUT del solicitante")
     address: str = Field(..., description="Dirección del solicitante")
+    phone_number: Optional[str] = Field(None, description="Número de teléfono del solicitante (opcional)")
+    email_notifications_enabled: bool = Field(True, description="Si el solicitante quiere recibir notificaciones por email")
+    whatsapp_notifications_enabled: bool = Field(False, description="Si el solicitante quiere recibir notificaciones por WhatsApp")
     provider: RegistrationProvider = Field(default=RegistrationProvider.GOOGLE, description="Proveedor de autenticación")
 
 
@@ -69,6 +72,9 @@ class RegistrationRequestResponse(BaseModel):
     full_name: Optional[str] = Field(None, description="Nombre completo")
     rut: Optional[str] = Field(None, description="RUT del solicitante")
     address: Optional[str] = Field(None, description="Dirección")
+    phone_number: Optional[str] = Field(None, description="Número de teléfono")
+    email_notifications_enabled: bool = Field(True, description="Preferencia de notificaciones por email")
+    whatsapp_notifications_enabled: bool = Field(False, description="Preferencia de notificaciones por WhatsApp")
     provider: RegistrationProvider = Field(..., description="Proveedor de autenticación")
     status: RegistrationStatus = Field(..., description="Estado de la solicitud")
     decided_by: Optional[UUID] = Field(None, description="ID del moderador que decidió")
@@ -152,6 +158,9 @@ class ManualRegistrationRequest(BaseModel):
     full_name: str = Field(..., description="Nombre completo del vecino")
     rut: str = Field(..., description="RUT del vecino")
     address: str = Field(..., description="Dirección del vecino")
+    phone_number: Optional[str] = Field(None, description="Número de teléfono del vecino (opcional)")
+    email_notifications_enabled: bool = Field(True, description="Si el vecino quiere recibir notificaciones por email")
+    whatsapp_notifications_enabled: bool = Field(False, description="Si el vecino quiere recibir notificaciones por WhatsApp")
     notes: Optional[str] = Field(None, description="Notas del moderador sobre el registro")
 
 
