@@ -101,7 +101,10 @@ class AuthRepository:
         email_verified_at: Optional[datetime] = None,
         full_name: Optional[str] = None,
         rut: Optional[str] = None,
-        address: Optional[str] = None
+        address: Optional[str] = None,
+        phone_number: Optional[str] = None,
+        email_notifications_enabled: bool = True,
+        whatsapp_notifications_enabled: bool = False
     ) -> User:
         """
         Crear nuevo usuario con el nuevo modelo User/UserEmail.
@@ -115,6 +118,9 @@ class AuthRepository:
             full_name: Nombre completo del usuario
             rut: RUT chileno del usuario
             address: Dirección del usuario
+            phone_number: Número de teléfono del usuario (opcional)
+            email_notifications_enabled: Preferencia de notificaciones por email
+            whatsapp_notifications_enabled: Preferencia de notificaciones por WhatsApp
 
         Returns:
             User: Usuario creado con su email primario
@@ -125,7 +131,10 @@ class AuthRepository:
             status=status,
             full_name=full_name,
             rut=rut,
-            address=address
+            address=address,
+            phone_number=phone_number,
+            email_notifications_enabled=email_notifications_enabled,
+            whatsapp_notifications_enabled=whatsapp_notifications_enabled
         )
         session.add(user)
         await session.flush()  # Para obtener el ID del usuario
