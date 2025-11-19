@@ -72,7 +72,7 @@ async def get_user_community_id(user_id: UUID, session: AsyncSession) -> Optiona
     "/availability",
     response_model=AvailabilityCheckResponse,
     summary="Verificar disponibilidad",
-    description="Verifica si un espacio está disponible en un rango de tiempo"
+    description="Verifica si un espacio está disponible en un rango de tiempo y si cumple con los límites de tiempo configurados"
 )
 async def check_availability(
     availability_data: AvailabilityCheckRequest = ...,
@@ -85,17 +85,51 @@ async def check_availability(
     **Uso:**
     - Consulta antes de crear una reserva
     - Verifica conflictos con reservas existentes
+    - Valida límites de tiempo diarios y semanales configurados en el espacio
     """
     try:
+        space_repo = SpaceRepository(session)
         reservation_repo = ReservationRepository(session)
 
+        # Verificar que el espacio existe
+        space = await space_repo.get(availability_data.space_id)
+        if not space:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Espacio no encontrado"
+            )
+
+        # Verificar conflictos de horario con otras reservas
         is_available, conflicts = await reservation_repo.check_availability(
             space_id=availability_data.space_id,
             start_time=availability_data.start_time,
             end_time=availability_data.end_time
         )
 
-        message = "El espacio está disponible" if is_available else "El espacio no está disponible en ese horario"
+        message = "El espacio está disponible"
+
+        # Si hay conflictos de horario, no está disponible
+        if not is_available:
+            message = "El espacio no está disponible en ese horario"
+        else:
+            # Si no hay conflictos, verificar límites de tiempo si están configurados
+            if space.rules_json:
+                max_hours_daily = space.rules_json.get('max_hours_daily')
+                max_hours_weekly = space.rules_json.get('max_hours_weekly')
+
+                if max_hours_daily or max_hours_weekly:
+                    complies, error_message = await reservation_repo.check_user_time_limits(
+                        user_id=current_user.id,
+                        space_id=availability_data.space_id,
+                        start_time=availability_data.start_time,
+                        end_time=availability_data.end_time,
+                        max_hours_daily=max_hours_daily,
+                        max_hours_weekly=max_hours_weekly
+                    )
+
+                    if not complies:
+                        is_available = False
+                        message = error_message
 
         return AvailabilityCheckResponse(
             is_available=is_available,
@@ -105,6 +139,8 @@ async def check_availability(
             message=message
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error checking availability: {str(e)}")
         raise HTTPException(
@@ -273,6 +309,10 @@ async def get_my_reservations(
     """
     try:
         reservation_repo = ReservationRepository(session)
+
+        # Actualizar reservas expiradas automáticamente
+        await reservation_repo.update_expired_reservations()
+
         reservations = await reservation_repo.list_by_user(
             user_id=current_user.id,
             include_past=include_past
@@ -343,6 +383,9 @@ async def list_community_reservations(
             )
 
         reservation_repo = ReservationRepository(session)
+
+        # Actualizar reservas expiradas automáticamente
+        await reservation_repo.update_expired_reservations()
 
         reservations, total, total_pages = await reservation_repo.list_by_community_paginated(
             community_id=user_community_id,
