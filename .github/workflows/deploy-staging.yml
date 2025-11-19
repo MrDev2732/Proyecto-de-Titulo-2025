@@ -1,0 +1,102 @@
+name: Deploy to Cloud Run (Staging)
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE_NAME: sistema-unidad-territorial-staging
+  REGISTRY: gcr.io
+
+jobs:
+  build-and-deploy:
+    name: Build Frontend + Backend and Deploy
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend (production)
+        run: |
+          npx nx build frontend --configuration=production
+        env:
+          NODE_ENV: production
+
+      - name: Copy frontend build to backend
+        run: |
+          mkdir -p apps/sistema-unidad-territorial/backend/dist
+          cp -r apps/dist/sistema-unidad-territorial/frontend/browser apps/sistema-unidad-territorial/backend/dist/frontend
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: |
+          gcloud auth configure-docker
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
+            -f apps/sistema-unidad-territorial/backend/Dockerfile \
+            apps/sistema-unidad-territorial/backend
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --min-instances=1 \
+            --max-instances=5 \
+            --memory=1Gi \
+            --cpu=2 \
+            --timeout=300 \
+            --cpu-throttling=false \
+            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
+            --set-secrets="ENVIRONMENT=environment:latest,SECRET_KEY=secret-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_OAUTH_REDIRECT_URI=google-oauth-redirect-uri:latest,GOOGLE_MAPS_API_KEY=google-maps-api-key:latest,GOOGLE_MAPS_ENABLE_VALIDATION=google-maps-enable-validation:latest,GOOGLE_MAPS_TIMEOUT_SECONDS=google-maps-timeout-seconds:latest,SMTP_ENABLED=smtp-enabled:latest,SMTP_USERNAME=smtp-username:latest,SMTP_PASSWORD=smtp-password:latest,SMTP_FROM_EMAIL=smtp-from-email:latest,SMTP_FROM_NAME=smtp-from-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,TWILIO_WHATSAPP_FROM=twilio-whatsapp-from:latest,TWILIO_ENABLED=twilio-enabled:latest,DB_USER=db-user:latest,DB_PASSWORD=db-password:latest,DB_HOST=db-host:latest,DB_PORT=db-port:latest,DB_DATABASE=db-database:latest,DB_SCHEMA=db-schema:latest"
+
+      - name: Get service URL
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+          echo "🚀 Service deployed to: $SERVICE_URL"
+          echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+
+      - name: Health check
+        run: |
+          sleep 10
+          curl -f ${{ env.SERVICE_URL }}/health || exit 1
+          echo "✅ Health check passed!"
