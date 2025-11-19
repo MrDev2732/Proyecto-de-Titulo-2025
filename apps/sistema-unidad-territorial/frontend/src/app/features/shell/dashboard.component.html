@@ -63,6 +63,20 @@
             >
               Reservas
             </button>
+            <button
+              (click)="currentView.set('news')"
+              [class]="'px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ' + 
+                       (currentView() === 'news' ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50')"
+            >
+              Noticias
+            </button>
+            <button
+              (click)="currentView.set('projects')"
+              [class]="'px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ' + 
+                       (currentView() === 'projects' ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50')"
+            >
+              Proyectos
+            </button>
           </div>
 
           <!-- User Info -->
@@ -260,6 +274,42 @@
 
           <!-- Componente de gestión de reservas de la comunidad -->
           <app-community-reservations-list />
+        </div>
+      }
+
+      <!-- News View -->
+      @if (currentView() === 'news') {
+        <div class="mb-6">
+          <button
+            (click)="currentView.set('overview')"
+            class="inline-flex items-center text-sm text-gray-600 hover:text-gray-800 mb-6 transition-colors"
+          >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Volver al panel principal
+          </button>
+
+          <!-- Componente de gestión de noticias -->
+          <app-news-management />
+        </div>
+      }
+
+      <!-- Projects View -->
+      @if (currentView() === 'projects') {
+        <div class="mb-6">
+          <button
+            (click)="currentView.set('overview')"
+            class="inline-flex items-center text-sm text-gray-600 hover:text-gray-800 mb-6 transition-colors"
+          >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Volver al panel principal
+          </button>
+
+          <!-- Componente de gestión de proyectos -->
+          <app-projects-management />
         </div>
       }
     }

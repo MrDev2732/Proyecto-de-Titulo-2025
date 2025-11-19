@@ -7,6 +7,8 @@ import { WelcomeAnimationComponent } from '../../shared/components/welcome-anima
 import { RegistrationRequestsListComponent } from '../../shared/components/registration-requests-list.component';
 import { CommunityReservationsListComponent } from '../reservations/community-reservations-list.component';
 import { SpacesManagementComponent } from '../spaces/spaces-management.component';
+import { NewsManagementComponent } from '../news/news-management.component';
+import { ProjectsManagementComponent } from '../projects/projects-management.component';
 
 interface DashboardStats {
 	pending: number;
@@ -38,7 +40,7 @@ interface QuickAction {
 @Component({
 	selector: 'app-dashboard',
 	standalone: true,
-	imports: [CommonModule, LoadingStateComponent, WelcomeAnimationComponent, RegistrationRequestsListComponent, CommunityReservationsListComponent, SpacesManagementComponent],
+	imports: [CommonModule, LoadingStateComponent, WelcomeAnimationComponent, RegistrationRequestsListComponent, CommunityReservationsListComponent, SpacesManagementComponent, NewsManagementComponent, ProjectsManagementComponent],
 	templateUrl: './dashboard.component.html',
 	styleUrl: './dashboard.component.scss'
 })
@@ -59,7 +61,7 @@ export class DashboardComponent implements OnInit {
 	quickActions = signal<QuickAction[]>([]);
 
 	// Vista actual del dashboard
-	currentView = signal<'overview' | 'registration' | 'reservations' | 'spaces' | 'residents' | 'projects' | 'documents' | 'meetings'>('overview');
+	currentView = signal<'overview' | 'registration' | 'reservations' | 'spaces' | 'news' | 'projects' | 'residents' | 'documents' | 'meetings'>('overview');
 
 	// Control de animación de bienvenida
 	showWelcomeAnimation = signal(true);
@@ -98,17 +100,24 @@ export class DashboardComponent implements OnInit {
 				status: 'active'
 			},
 			{
-				id: 'residents',
-				title: 'Directorio de Vecinos',
-				description: 'Gestiona la información de los vecinos registrados',
-				icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z',
-				status: 'coming_soon'
+				id: 'news',
+				title: 'Gestión de Noticias',
+				description: 'Crea y administra noticias y avisos de la comunidad',
+				icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z',
+				status: 'active'
 			},
 			{
 				id: 'projects',
 				title: 'Proyectos Comunitarios',
 				description: 'Administra proyectos e iniciativas de la comunidad',
-				icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+				icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+				status: 'active'
+			},
+			{
+				id: 'residents',
+				title: 'Directorio de Vecinos',
+				description: 'Gestiona la información de los vecinos registrados',
+				icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z',
 				status: 'coming_soon'
 			},
 			{
@@ -163,11 +172,19 @@ export class DashboardComponent implements OnInit {
 				color: 'gray'
 			},
 			{
-				id: 'new-project',
-				title: 'Nuevo Proyecto',
-				description: 'Crear proyecto comunitario',
-				icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
-				action: () => this.showComingSoon('Creación de Proyectos'),
+				id: 'manage-news',
+				title: 'Gestionar Noticias',
+				description: 'Crear y publicar noticias',
+				icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z',
+				action: () => this.navigateToModule('news'),
+				color: 'gray'
+			},
+			{
+				id: 'manage-projects',
+				title: 'Gestionar Proyectos',
+				description: 'Aprobar y gestionar proyectos',
+				icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+				action: () => this.navigateToModule('projects'),
 				color: 'gray'
 			},
 			{
@@ -236,6 +253,10 @@ export class DashboardComponent implements OnInit {
 			this.currentView.set('reservations');
 		} else if (moduleId === 'spaces') {
 			this.currentView.set('spaces');
+		} else if (moduleId === 'news') {
+			this.currentView.set('news');
+		} else if (moduleId === 'projects') {
+			this.currentView.set('projects');
 		} else {
 			this.showComingSoon(`Módulo ${moduleId}`);
 		}

@@ -26,6 +26,22 @@ export interface NewsFilters {
 	per_page?: number;
 }
 
+export interface NewsCreateDto {
+	title: string;
+	body: string;
+	community_id: string;
+	visible_from?: string;
+	visible_until?: string | null;
+}
+
+export interface NewsUpdateDto {
+	title?: string;
+	body?: string;
+	community_id?: string;
+	visible_from?: string;
+	visible_until?: string | null;
+}
+
 @Injectable({ 
 	providedIn: 'root' 
 })
@@ -49,4 +65,24 @@ export class NewsService {
 		return this.http.get<NewsListResponse>(`${this.baseUrl}/my-communities`, { params });
 	}
 
+	/**
+	 * Crear una noticia nueva
+	 */
+	createNews(news: NewsCreateDto): Observable<NewsItem> {
+		return this.http.post<NewsItem>(`${this.baseUrl}/`, news);
+	}
+
+	/**
+	 * Editar una noticia existente
+	 */
+	updateNews(newsId: string, news: NewsUpdateDto): Observable<NewsItem> {
+		return this.http.post<NewsItem>(`${this.baseUrl}/${newsId}`, news);
+	}
+
+	/**
+	 * Deshabilitar una noticia (soft delete)
+	 */
+	deleteNews(newsId: string): Observable<void> {
+		return this.http.delete<void>(`${this.baseUrl}/${newsId}`);
+	}
 }
