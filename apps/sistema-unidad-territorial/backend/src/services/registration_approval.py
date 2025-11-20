@@ -36,7 +36,7 @@ class RegistrationApprovalService:
         request_id: UUID,
         decided_by: UUID,
         decision_notes: Optional[str] = None
-    ) -> RegistrationRequest:
+    ) -> tuple[RegistrationRequest, Optional[str]]:
         """
         Aprobar una solicitud de registro y crear todo el ecosistema de datos.
 
@@ -47,7 +47,7 @@ class RegistrationApprovalService:
             decision_notes: Notas opcionales del moderador
 
         Returns:
-            RegistrationRequest: Solicitud aprobada
+            tuple: (Solicitud aprobada, Contraseña temporal si se generó)
 
         Raises:
             HTTPException: Si la solicitud no se encuentra
@@ -67,7 +67,7 @@ class RegistrationApprovalService:
             )
 
         # Buscar o crear usuario
-        user = await RegistrationApprovalService._get_or_create_user(
+        user, temporary_password = await RegistrationApprovalService._get_or_create_user(
             session=session,
             registration_request=approved_request
         )
@@ -92,13 +92,13 @@ class RegistrationApprovalService:
         )
         logger.info(f"✅ Created membership for user {approved_request.email} in community {approved_request.community_id}")
 
-        return approved_request
+        return approved_request, temporary_password
 
     @staticmethod
     async def _get_or_create_user(
         session: AsyncSession,
         registration_request: RegistrationRequest
-    ) -> User:
+    ) -> tuple[User, Optional[str]]:
         """
         Buscar usuario existente o crear uno nuevo con contraseña aleatoria y datos completos.
 
@@ -107,21 +107,22 @@ class RegistrationApprovalService:
             registration_request: Solicitud de registro con todos los datos del usuario
 
         Returns:
-            User: Usuario encontrado o creado
+            tuple: (Usuario encontrado o creado, Contraseña temporal si es nuevo)
         """
         email = registration_request.email
+        temporary_password = None
 
         # Buscar usuario existente
         user = await AuthRepository.find_user_by_email(session, email)
 
         if not user:
             # Crear usuario con contraseña aleatoria y datos completos
-            random_password = generate_secure_password()
-            logger.info(f"🔑 Temporary password for {email}: {random_password}")
+            temporary_password = generate_secure_password()
+            logger.info(f"🔑 Temporary password for {email}: {temporary_password}")
             user = await AuthRepository.create_user(
                 session=session,
                 email=email,
-                password_hash=get_password_hash(random_password),
+                password_hash=get_password_hash(temporary_password),
                 status=UserStatus.ACTIVE,
                 full_name=registration_request.full_name,
                 rut=registration_request.rut,
@@ -138,28 +139,8 @@ class RegistrationApprovalService:
             logger.info(f"   📱 Phone: {registration_request.phone_number}")
             logger.info(f"   📧 Email notifications: {registration_request.email_notifications_enabled}")
             logger.info(f"   💬 WhatsApp notifications: {registration_request.whatsapp_notifications_enabled}")
-            logger.info(f"   🔑 Temporary password: {random_password}")
+            logger.info(f"   🔑 Temporary password: {temporary_password}")
 
-            # Dispatch evento de aprobación de registro
-            try:
-                community = await session.get(Community, registration_request.community_id)
-                community_name = community.name if community else "Comunidad"
-
-                await dispatcher.dispatch(Event(
-                    event_type=EventType.REGISTRATION_APPROVED,
-                    user_id=user.id,
-                    data={
-                        'email': email,
-                        'full_name': registration_request.full_name,
-                        'temporary_password': random_password,
-                        'community_name': community_name,
-                        'is_new_user': True
-                    }
-                ))
-                logger.info(f"🔔 Dispatched REGISTRATION_APPROVED event for {email}")
-
-            except Exception as e:
-                logger.error(f"❌ Error dispatching REGISTRATION_APPROVED event for {email}: {e}")
         else:
             logger.info(f"✅ Found existing user {email}")
 
@@ -194,7 +175,7 @@ class RegistrationApprovalService:
                 await session.flush()
                 logger.info(f"🔄 Updated existing user {email} with missing profile data")
 
-        return user
+        return user, temporary_password
 
     @staticmethod
     async def register_resident_manually(
