@@ -486,7 +486,7 @@ async def approve_registration_request(
     """
     # La validación de permisos ya se hizo en la dependencia
     # Usar el servicio para manejar toda la lógica de aprobación
-    approved_request = await RegistrationApprovalService.approve_registration_request(
+    approved_request, temporary_password = await RegistrationApprovalService.approve_registration_request(
         session=session,
         request_id=request_id,
         decided_by=current_user.id,
@@ -511,7 +511,8 @@ async def approve_registration_request(
                     'full_name': approved_request.full_name or "Usuario",
                     'community_name': community_name,
                     'moderator_notes': decision_data.decision_notes,
-                    'is_new_user': False  # Ya fue creado en el servicio
+                    'is_new_user': bool(temporary_password),
+                    'temporary_password': temporary_password
                 }
             ))
             logger.info(f"🔔 Dispatched REGISTRATION_APPROVED event for {approved_request.email}")
