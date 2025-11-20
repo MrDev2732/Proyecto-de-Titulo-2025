@@ -91,7 +91,7 @@ class ReservationRepository:
                 )
             )
             result = await self.db.execute(daily_query)
-            daily_hours = result.scalar() or 0
+            daily_hours = float(result.scalar() or 0)
 
             if daily_hours + duration_hours > max_hours_daily:
                 return False, f"Esta reserva de {duration_hours:.1f} hora(s) excede el límite diario de {max_hours_daily} hora(s). Ya tienes {daily_hours:.1f} hora(s) reservadas hoy."
@@ -117,7 +117,7 @@ class ReservationRepository:
                 )
             )
             result = await self.db.execute(weekly_query)
-            weekly_hours = result.scalar() or 0
+            weekly_hours = float(result.scalar() or 0)
 
             if weekly_hours + duration_hours > max_hours_weekly:
                 return False, f"Esta reserva de {duration_hours:.1f} hora(s) excede el límite semanal de {max_hours_weekly} hora(s). Ya tienes {weekly_hours:.1f} hora(s) reservadas esta semana."
