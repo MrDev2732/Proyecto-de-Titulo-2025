@@ -29,10 +29,10 @@ class CertificateService:
     # Posiciones donde se colocarán los datos (en mm desde la esquina inferior izquierda)
     # Estas coordenadas pueden necesitar ajuste según el diseño exacto del PDF
     FIELD_POSITIONS = {
-        'full_name': (100, 175),      # Nombre completo
-        'rut': (73, 190),             # RUT
-        'address': (128, 205),        # Dirección
-        'community_name': (100, 135), # Nombre de la comunidad
+        'full_name': (70, 161),       # Nombre completo
+        'rut': (120, 175),            # RUT
+        'address': (50, 190),        # Dirección
+        'community_name': (40, 205), # Nombre de la comunidad
         'issue_date': (100, 120),     # Fecha de emisión
         'certificate_number': (450, 200), # Número de certificado
     }
