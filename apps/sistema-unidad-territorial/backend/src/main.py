@@ -220,16 +220,8 @@ async def api_info():
 # .parent.parent.parent.parent = apps/
 # / "dist" / ... = apps/dist/sistema-unidad-territorial/frontend/browser/
 
-ROOT = Path(__file__).resolve()
-
-while ROOT.name != "apps" and ROOT != ROOT.parent:
-    ROOT = ROOT.parent
-
-if ROOT.name != "apps":
-    raise RuntimeError("No se pudo encontrar el directorio 'apps'")
-
-FRONTEND_BUILD_PATH = ROOT / "dist" / "sistema-unidad-territorial" / "frontend"
-
+ROOT = Path(__file__).parent.parent.parent.parent
+FRONTEND_BUILD_PATH = Path(ROOT / "dist" / "sistema-unidad-territorial" / "frontend")
 
 
 # Montar archivos estáticos del frontend (solo si existe el directorio)
