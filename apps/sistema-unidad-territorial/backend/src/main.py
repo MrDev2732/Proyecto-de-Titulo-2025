@@ -224,8 +224,7 @@ if settings.environment == "DEVELOPMENT":
     ROOT = Path(__file__).parent.parent.parent.parent
     FRONTEND_BUILD_PATH = Path(ROOT / "dist" / "sistema-unidad-territorial" / "frontend")
 else:
-    ROOT = Path(__file__).resolve().parents[3]
-    FRONTEND_BUILD_PATH = Path(ROOT / "dist" / "sistema-unidad-territorial" / "frontend")
+    FRONTEND_BUILD_PATH = Path("apps" / "dist" / "sistema-unidad-territorial" / "frontend")
 
 
 # Montar archivos estáticos del frontend (solo si existe el directorio)
@@ -273,13 +272,7 @@ else:
     logger.info("   💡 Ejecuta 'nx build frontend --configuration=production' para generar el build")
     logger.info(f"   📍 Ejecutándose desde: {Path(__file__).absolute()}")
     logger.info(f"   📁 Directorio de trabajo actual: {Path.cwd()}")
-    logger.info(f"   🏠 ROOT calculado: {ROOT}")
     logger.info(f"   🎯 FRONTEND_BUILD_PATH: {FRONTEND_BUILD_PATH}")
-    logger.info(f"   📂 Contenido del directorio ROOT: {list(ROOT.iterdir()) if ROOT.exists() else 'No existe'}")
-    if (ROOT / "dist").exists():
-        logger.info(f"   📂 Contenido de dist/: {list((ROOT / 'dist').iterdir())}")
-    else:
-        logger.info("   📂 Directorio dist/ no existe")
 
 
 if __name__ == "__main__":
