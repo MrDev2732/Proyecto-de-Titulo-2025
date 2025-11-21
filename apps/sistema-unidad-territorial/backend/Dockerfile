@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Crear directorio de trabajo
-WORKDIR /app
+WORKDIR /apps
 
 # Instalar Poetry
 RUN pip install poetry==1.7.1
@@ -40,11 +40,11 @@ RUN mkdir -p uploads logs
 # Esto se monta en /app/dist/frontend/ en el contenedor
 
 # Exponer puerto
-EXPOSE 8080
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/api/v1/health || exit 1
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
 # Comando para ejecutar la aplicación
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
