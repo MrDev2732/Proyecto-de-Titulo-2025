@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Crear directorio de trabajo
-WORKDIR /app
+WORKDIR /apps
 
 # Instalar Poetry
 RUN pip install poetry==1.7.1
@@ -48,3 +48,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Comando para ejecutar la aplicación
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+

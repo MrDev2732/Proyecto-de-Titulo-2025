@@ -221,9 +221,10 @@ async def api_info():
 # / "dist" / ... = apps/dist/sistema-unidad-territorial/frontend/browser/
 
 if settings.environment == "DEVELOPMENT":
-    FRONTEND_BUILD_PATH = Path(__file__).parent.parent.parent.parent / "dist" / "sistema-unidad-territorial" / "frontend" / "browser"
+    ROOT = Path(__file__).parent.parent.parent.parent
+    FRONTEND_BUILD_PATH = Path(ROOT / "dist" / "sistema-unidad-territorial" / "frontend")
 else:
-    FRONTEND_BUILD_PATH = Path(__file__).resolve().parents[3] / "dist" / "sistema-unidad-territorial" / "frontend" / "sistema-unidad-territorial" / "frontend"
+    FRONTEND_BUILD_PATH = Path("dist/frontend")
 
 
 # Montar archivos estáticos del frontend (solo si existe el directorio)
