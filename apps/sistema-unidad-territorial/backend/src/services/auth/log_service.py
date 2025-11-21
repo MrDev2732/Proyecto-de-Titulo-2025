@@ -68,7 +68,7 @@ class AuthenticationLogService:
             # Crear log de autenticación
             auth_log = await self.repository.create_auth_log(
                 session=self.session,
-                tenant_id=user.tenant_id,
+                tenant_id=user.tenant_id if user else None,
                 user_id=user.id if user else None,
                 user_session_id=user_session.id if user_session else None,
                 email=email,
